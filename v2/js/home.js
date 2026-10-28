@@ -44,7 +44,7 @@
       info: "Each run saves itself at the end. It holds no participant details."
     },
     report: {
-      title: "Study impact",
+      title: "Issues",
       subtitle: "Tell the platform team how a problem affected your study.",
       info: "Your team's troubleshooting runs fill in most of it. After you send it, status changes show on the Home page."
     },

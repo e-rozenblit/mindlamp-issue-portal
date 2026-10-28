@@ -109,7 +109,8 @@ window.GUIDE_CONTENT = {
       description: "Login fails, or the login screen keeps coming back.",
       phrases: ["can't sign in", "login not working", "incorrect username or password", "invalid id", "wrong server",
         "kicked out", "logged out", "signed out", "has to log in every time", "login screen keeps coming back",
-        "password doesn't work", "qr code didn't work", "stuck after login", "self help", "try it"],
+        "password doesn't work", "qr code didn't work", "stuck after login", "self help", "try it",
+        "reminder opens the login screen", "asked to log in after tapping a notification"],
       issueId: "i01",
       start: "login.what"
     },
@@ -359,6 +360,7 @@ window.GUIDE_CONTENT = {
       why: "What they see points to the cause. A screenshot helps.",
       basis: ["platform", "documented"],
       options: [
+        { label: "The login screen, right after tapping a reminder", next: "login.notif" },
         { label: "The login screen, with their details gone", next: "login.how" },
         { label: "An error after typing their details", next: "login.typo", issueId: null },
         { label: "Spinning or blank after tapping Log in", next: "@wont_load" },
@@ -367,6 +369,17 @@ window.GUIDE_CONTENT = {
         { label: "A list of servers to pick from", next: "login.server", issueId: null }
       ],
       otherNext: "login.typo"
+    },
+    "login.notif": {
+      kind: "action", stage: 3, short: "Force-quit and reopen", who: "participant-now",
+      text: "Have them swipe the app closed and open it again. It often goes straight to the activity, with no sign-in needed.",
+      why: "After tapping a reminder, the login screen can appear while they are still signed in and phone data is still being collected. Force-quitting deletes no data.",
+      basis: ["staff", "code"],
+      notFixedNext: "login.how", fixedNext: "login.notifok"
+    },
+    "login.notifok": {
+      kind: "end", ending: "fixed",
+      text: "Good. This can happen again after a later reminder. If it does, they can swipe the app closed and reopen it before typing their details."
     },
     "login.how": {
       kind: "question", stage: 1, short: "Once or every time?",

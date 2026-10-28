@@ -1124,7 +1124,7 @@
      At most about four main tabs, set by the person's roles across ALL their studies (so tabs don't jump when
      they switch study). Everything else sits under "More", so every page stays reachable (D21). Admins see every tab. */
   const PAGE_NAME = { home: "Home", guide: "Troubleshoot", issues: "Known problems", study: "Your study",
-    report: "Study impact", dev: "Dev meeting", admin: "Admin", about: "How this works" };
+    report: "Issues", dev: "Dev meeting", admin: "Admin", about: "How this works" };
   const NAV_ORDER = ["home", "guide", "issues", "study", "report", "dev", "admin", "about"];
   const ROLE_TABS = {
     rc: ["home", "guide", "issues", "report"],
