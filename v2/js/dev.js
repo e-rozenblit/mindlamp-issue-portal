@@ -248,7 +248,7 @@
         ui.toast("Status changed");
         /* Keep the row for a few seconds so the change can be undone. */
         row.dataset.busy = "1";
-        put(msg, "Changed to " + (C.STATUS[partial.status] || partial.status) + ". People who reported it or said \"This affects us too\" see this on Start here. ",
+        put(msg, "Changed to " + (C.STATUS[partial.status] || partial.status) + ". People who reported it or said \"This affects us too\" see this on their Home page. ",
           prev ? el("button", { type: "button", class: "linkbtn", text: "Undo", onclick: async () => {
             clearTimeout(undoTimer);
             msg.textContent = "Undoing...";

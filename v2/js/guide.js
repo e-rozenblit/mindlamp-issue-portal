@@ -779,7 +779,7 @@
       const m = run.fixMarks;
       const worked = order.some(x => m[x] === "fixed");
       const all = order.every(x => m[x] === "fixed" || m[x] === "not_fixed");
-      status.textContent = worked || all ? "" : "Anything you don't try now is saved for later. Record how it went from Start here.";
+      status.textContent = worked || all ? "" : "Anything you don't try now is saved for later. Record how it went from the Home page.";
     };
     const card = x => {
       const n = nodeOf(x);
@@ -901,7 +901,7 @@
         el("ul", { class: "clean" }, notYet.map(p => el("li", { text: stepName(nodeOf(p.node), p.node) })))));
       /* Results are added to this session later (D24), so a content line about starting a new session doesn't apply. */
       if (end.text && !/new session/i.test(end.text)) parts.push(el("p", { text: end.text }));
-      if (run.saveState !== "local") parts.push(el("p", { class: "g-comeback", text: "To record how it went, open this session again from Start here or Troubleshoot." }));
+      if (run.saveState !== "local") parts.push(el("p", { class: "g-comeback", text: "To record how it went, open this session again from Home or Troubleshoot." }));
     }
 
     if (outcome === "not_fixed") {
@@ -1094,7 +1094,7 @@
       case "fixed": return "Saved to " + P.calc.studyName(run.studyId) + ".";
       case "unconfirmed": return "Saved. It counts as fixed once you record that it worked.";
       case "not_fixed": return "Sent to the platform team. They review new sessions before each dev meeting." +
-        (hasIssue ? " Changes to this problem show on Start here." : "");
+        (hasIssue ? " Changes to this problem show on the Home page." : "");
       case "no_fix_yet": return "Saved to " + P.calc.studyName(run.studyId) + ".";
       case "new_problem": return "Sent to the platform team. They will sort it into a known problem or a new one.";
       case "not_app": return "Saved to " + P.calc.studyName(run.studyId) + ".";

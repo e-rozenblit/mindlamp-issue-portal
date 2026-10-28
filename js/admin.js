@@ -639,7 +639,7 @@
 
       el("div", { class: "panel" },
         el("h3", { text: "3. Sort new problems" }),
-        el("p", { class: "hint", text: "Sessions that ended \"Still not fixed\" or \"New problem\", and reports of something new. Link each to an issue, make a new issue, or dismiss it. The team sees what you did on its Start here page." }),
+        el("p", { class: "hint", text: "Sessions that ended \"Still not fixed\" or \"New problem\", and reports of something new. Link each to an issue, make a new issue, or dismiss it. The team sees what you did on its Home page." }),
         el("label", { class: "opts" }, el("span", { style: "display:flex;gap:6px;align-items:center" }, unlinked,
           "Also show finished sessions that have no issue")),
         triageCount),

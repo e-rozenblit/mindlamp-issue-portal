@@ -28,7 +28,7 @@
      and `steps` for an ordered procedure, shown as a list behind the same button). */
   const PAGE_COPY = {
     home: {
-      title: "Start here",
+      title: "Home",
       subtitleByRole: {
         rc: "Help participants with problems, and tell the platform team what keeps happening.",
         lead: "Keep your study's setup and goals current, and watch the problems that affect it.",
@@ -46,7 +46,7 @@
     report: {
       title: "Report a problem",
       subtitle: "Tell the platform team how a problem affected your study.",
-      info: "Your team's troubleshooting runs fill in most of it. After you send it, status changes show on Start here."
+      info: "Your team's troubleshooting runs fill in most of it. After you send it, status changes show on the Home page."
     },
     issues: {
       title: "Known problems",

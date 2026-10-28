@@ -6,7 +6,7 @@
   const P = window.Portal;
 
   const PARTS = [
-    ["overall", "The portal overall"], ["home", "Start here"], ["guide", "Troubleshoot"], ["report", "Report a problem"],
+    ["overall", "The portal overall"], ["home", "Home"], ["guide", "Troubleshoot"], ["report", "Report a problem"],
     ["issues", "Known problems"], ["study", "Your study"], ["dev", "Dev meeting"], ["admin", "Admin"], ["about", "How this works"]
   ];
   /* The five steps agreed at the 10-26 dev meeting (D19). */
@@ -15,7 +15,7 @@
     ["Dev meeting", "Every two weeks, developers and the platform team review new reports and sessions and decide what to work on. Small, safe fixes are made right away."],
     ["Build and test", "Developers build and test the change. Study teams may be asked to try it before release."],
     ["Review and ship", "The platform team reviews the change and releases it, with release notes. The guide and docs are updated."],
-    ["Status update", "The problem's status changes here. If you reported it, troubleshot it or marked \"This affects us too\", you see the change on Start here."]
+    ["Status update", "The problem's status changes here. If you reported it, troubleshot it or marked \"This affects us too\", you see the change on the Home page."]
   ];
   const STATUS_HELP = P.C.STATUS_HELP || {};
   const RECOG = [

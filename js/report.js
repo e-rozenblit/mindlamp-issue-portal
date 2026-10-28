@@ -709,7 +709,7 @@
     f.sentList = el("ul", { class: "rp-lines" });
     const again = el("button", { type: "button", class: "btn", text: "Report another problem" });
     again.addEventListener("click", () => { showSent(false); showPicker(true); if (picker.focusSearch) picker.focusSearch(); });
-    const home = el("button", { type: "button", class: "btn ghost", text: "Go to Start here" });
+    const home = el("button", { type: "button", class: "btn ghost", text: "Go to Home" });
     home.addEventListener("click", () => P.go("home"));
     f.sent = el("div", { class: "panel rp-sent", hidden: true },
       f.sentTitle, el("p", { text: "What happens next:" }), f.sentList, el("div", { class: "bar" }, again, home));
@@ -734,7 +734,7 @@
       rec && rec.issueId === "new"
         ? "They'll match it to a known problem or add it as a new one."
         : "Your answers help decide where this problem ranks.",
-      "When the problem's status changes, you'll see it on your Start here page."
+      "When the problem's status changes, you'll see it on the Home page."
     ];
     if (rec && rec.security) lines.push("Only the platform team can see this report.");
     f.sentList.replaceChildren(...lines.map(t => el("li", { text: t })));
