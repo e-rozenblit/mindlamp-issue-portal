@@ -305,7 +305,7 @@ window.GUIDE_CONTENT = {
       text: "Android: in Settings, open Apps, then mindLAMP, then Storage. Tap Clear cache only.",
       why: "Clearing the cache can fix a stuck app on Android. Data already uploaded is safe.",
       basis: ["documented", "platform"],
-      caution: "Tap Clear cache only. Clear storage (or Clear data) signs them out and deletes data not yet uploaded. The effect of Clear cache on unsent data is unknown.",
+      caution: "Clear storage (or Clear data) signs them out and deletes data not yet uploaded. The effect of Clear cache on unsent data is unknown.",
       when: { os: "android" }, skip: "load.reinstall",
       notFixedNext: "load.reinstall", fixedNext: "load.confirm"
     },

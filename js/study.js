@@ -182,9 +182,11 @@
     const row = (label, val) => val ? el("li", {}, el("b", { text: label + ": " }), String(val)) : null;
     return el("div", { class: "list" }, reps.slice(0, 20).map(r => {
       const iid = r.linkedIssueId || r.issueId;
-      const title = iid && iid !== "new" ? calc.issueTitle(iid) : "Something new: " + (r.newTitle || "no title");
+      /* Review round 10-28: the short problem name, not the full sentence. */
+      const iss = iid && iid !== "new" && calc.issue ? calc.issue(iid) : null;
+      const title = iid && iid !== "new" ? (iss ? ui.issueName(iss).title : calc.issueTitle(iid)) : "Something new: " + (r.newTitle || "no title");
       return el("details", { class: "sd-report" },
-        el("summary", { text: title + ", " + ui.fmtDate(r.created) + (r.author ? " (" + calc.personName(r.author) + ")" : "") }),
+        el("summary", { text: title + " · " + ui.fmtDate(r.created) + (r.author ? " · " + calc.personName(r.author) : "") }),
         el("ul", { class: "clean" },
           row("What it stopped", words(r, "stops", C.STOPS)),
           row("What it did to the data", words(r, "data", C.DATA)),

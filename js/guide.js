@@ -50,8 +50,8 @@
   const BASIS_FALLBACK = { platform: ["Platform team practice", "What the mindLAMP platform team does when troubleshooting."] };
   const MAP_PREF = "ip-guide-map-full";
   /* Safe fixes (stage 3) are shown together (D24). Each fix gets one mark; an unmarked fix counts as "Not now". */
-  const FIX_MARKS = [["fixed", "Tried, it worked"], ["not_fixed", "Tried, didn't work"], ["later", "Not now"]];
-  const FIX_LABEL = { fixed: "Tried, it worked", not_fixed: "Tried, didn't work", later: "Not now" };
+  const FIX_MARKS = [["fixed", "Tried, it worked"], ["not_fixed", "Tried, didn't work"], ["later", "Not tried yet"]];
+  const FIX_LABEL = { fixed: "Tried, it worked", not_fixed: "Tried, didn't work", later: "Not tried yet" };
   const WHO_LABEL = { "participant-now": "Participant, now", "participant-later": "Participant, later", "staff-now": "Staff", platform: "Platform team" };
   const UNCONFIRMED_END = "common.unconfirmed";
 
@@ -192,7 +192,10 @@
     const order = chain.safe.concat(chain.risky);
     const marks = run.fixMarks || {};
     const chosen = order.find(x => marks[x] === "fixed") || "";
-    const allTried = order.length && order.every(x => marks[x] === "fixed" || marks[x] === "not_fixed");
+    /* Review round 10-28 (D20, D24 retention over complete data): when every safe fix failed, the session can
+       go to the platform team without the data-losing last resort being tried. */
+    const tried = x => marks[x] === "fixed" || marks[x] === "not_fixed";
+    const allTried = order.length && (order.every(tried) || (chain.safe.length > 0 && chain.safe.every(x => marks[x] === "not_fixed")));
     const note = String(run.noteDraft[id] || "").trim().slice(0, P.C.LIMITS.note);
     /* A step skipped once is listed once, even after Back and a second Continue. */
     chain.skipped.forEach(x => { if (!run.skips.some(s => s.node === x)) run.skips.push({ at: run.path.length, node: x }); });
@@ -674,10 +677,11 @@
       });
       return c;
     });
-    /* D24: the why opens on demand; the basis chips stay visible (D21). */
+    /* Review round 10-28: the why is the fact people need, so it shows in plain view; the basis chips stay
+       visible beside it (D21, D24: the source is named by the tag). */
     return el("div", { class: "g-why" },
-      chips.length || why ? el("div", { class: "g-basis" }, el("span", { class: "hint", text: chips.length ? "How we know:" : "" }), chips,
-        why ? info(el("p", { text: why }), "Why") : null) : null,
+      why ? el("p", { class: "hint g-why-text", text: why }) : null,
+      chips.length ? el("div", { class: "g-basis" }, el("span", { class: "hint", text: "How we know:" }), chips) : null,
       help);
   }
 
@@ -775,7 +779,7 @@
       const m = run.fixMarks;
       const worked = order.some(x => m[x] === "fixed");
       const all = order.every(x => m[x] === "fixed" || m[x] === "not_fixed");
-      status.textContent = worked || all ? "" : "Fixes not tried yet count as \"Not now\". This session will end as \"" + outcomeLabel("unconfirmed") + "\".";
+      status.textContent = worked || all ? "" : "Anything you don't try now is saved for later. Record how it went from Start here.";
     };
     const card = x => {
       const n = nodeOf(x);
@@ -913,9 +917,10 @@
         }), "Phone details saved to the session.")));
       /* The steps tried are already in "Your answers" and the path map, so they aren't listed a third time. */
       if (sg.length) parts.push(stopgapBlock(sg));
+      /* Review round 10-28: shown in plain view, since this is the moment before the call ends. */
       if ((end.collect || []).length) parts.push(el("div", { class: "g-block g-collect" },
-        el("div", { class: "k" }, "The platform team may ask for ",
-          info(el("ul", { class: "clean" }, end.collect.map(t => el("li", { text: t }))), "What the platform team may ask for"))));
+        el("div", { class: "k" }, "The platform team may ask for"),
+        el("ul", { class: "clean" }, end.collect.map(t => el("li", { text: t })))));
       parts.push(helpedBlock(sg));
     }
 
@@ -1087,7 +1092,7 @@
   function realSavedText(outcome, hasIssue) {
     switch (outcome) {
       case "fixed": return "Saved to " + P.calc.studyName(run.studyId) + ".";
-      case "unconfirmed": return "Saved as not confirmed yet. It doesn't count as fixed.";
+      case "unconfirmed": return "Saved. It counts as fixed once you record that it worked.";
       case "not_fixed": return "Sent to the platform team. They review new sessions before each dev meeting." +
         (hasIssue ? " Changes to this problem show on Start here." : "");
       case "no_fix_yet": return "Saved to " + P.calc.studyName(run.studyId) + ".";
@@ -1119,7 +1124,7 @@
   /* P.go("guide", { followUp: sessionId }) opens one of the signed-in person's saved sessions: the fixes left for
      later (and the one that seemed to help), a mark for each, a final result, and what helped. Saved with
      store.patch as followUp (+ helpedPicks / helped). Nothing here changes the run in progress. */
-  const FOLLOW_MARKS = [["worked", "Worked"], ["didnt", "Didn't work"], ["not_tried", "Not tried"]];
+  const FOLLOW_MARKS = [["worked", "Worked"], ["didnt", "Didn't work"], ["not_tried", "Not tried yet"]];
   const FINALS = ["fixed", "not_fixed", "unconfirmed"];
   function followSession(id) {
     const uid = P.S.user && P.S.user.uid;
@@ -1149,7 +1154,7 @@
     if (!s) {
       const loading = !(P.S.loaded && P.S.loaded.sessions);
       V.follow.replaceChildren(el("div", { class: "panel g-followup" }, el("div", { class: "g-meta" }, back),
-        el("h3", { tabindex: "-1", "data-focus": "", text: "Follow up" }),
+        el("h3", { tabindex: "-1", "data-focus": "", text: "Record the result" }),
         el("p", { class: loading ? "hint" : "notice", text: loading ? "Loading the session..." : "This session isn't available. Only the person who ran it can follow up." })));
       return;
     }
@@ -1209,7 +1214,9 @@
         P.go("guide", { entryId: s.entryId });
       }));
     };
-    const save = btn(s.followUp ? "Update follow-up" : "Save follow-up", "btn g-fusave", async () => {
+    const save = btn(s.followUp ? "Update result" : "Save result", "btn g-fusave", async () => {
+      /* Review round 10-28: a fix marked Worked already says the result. */
+      if (!d.final && items.some(x => d.marks[x] === "worked")) d.final = "fixed";
       if (!d.final) { msg.textContent = "Choose a result first."; return; }
       const partial = Object.assign({
         followUp: { at: new Date().toISOString(), results: items.map(x => ({ node: x, mark: d.marks[x] || "not_tried" })), final: d.final }
@@ -1231,7 +1238,7 @@
     });
     V.follow.replaceChildren(el("div", { class: "panel g-followup" },
       el("div", { class: "g-meta" }, back),
-      el("h3", { tabindex: "-1", "data-focus": "", text: "Follow up" }),
+      el("h3", { tabindex: "-1", "data-focus": "", text: "Record the result" }),
       facts,
       later ? el("div", { class: "g-block g-later" }, el("div", { class: "k", text: "Still to check" }), el("p", { text: later })) : null,
       items.length ? el("div", { class: "g-block" }, el("div", { class: "k", text: "Fixes" }), el("ol", { class: "g-fixlist" }, items.map(card))) : null,

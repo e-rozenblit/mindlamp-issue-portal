@@ -418,7 +418,7 @@
       el("div", { class: "ladder" }, statusChip(i.status, help), help ? " " + help : "",
         i.confirmed ? [" ", chip("Confirmed problem", "stamp")] : null),
       plans.notNow.map(t => el("p", {}, el("b", { text: "Why not now: " }), t)),
-      plans.ideaNotNow.map(t => el("p", {}, el("b", { text: "Fix on hold: " }), t)),
+      plans.ideaNotNow.map(t => el("p", {}, el("b", { text: "Next step: " }), t)),
       i.status !== "not-now" && i.statusNote ? el("p", { text: i.statusNote }) : null,
       plans.planned.map(t => el("p", {}, el("b", { text: "What's planned: " }), t)),
       spec ? el("p", {}, el("a", { href: spec, target: "_blank", rel: "noopener", text: "Open the working spec" })) : null));

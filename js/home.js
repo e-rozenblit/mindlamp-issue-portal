@@ -19,7 +19,7 @@
      not-now reason on a problem with another status is about one proposed fix, so it says so. */
   function notNowText(plan) {
     if (!plan.notNow) return "";
-    return (plan.notNowLabel === "Why not now: " ? "Why not now: " : "Fix on hold: ") + plan.notNow;
+    return (plan.notNowLabel === "Why not now: " ? "Why not now: " : "Next step: ") + plan.notNow;
   }
 
   /* ---------- page-head copy for every page ----------
@@ -44,7 +44,7 @@
       info: "Each run saves itself at the end. It holds no participant details."
     },
     report: {
-      title: "Weekly report",
+      title: "Report a problem",
       subtitle: "Tell the platform team how a problem affected your study.",
       info: "Your team's troubleshooting runs fill in most of it. After you send it, status changes show on Start here."
     },
@@ -204,7 +204,7 @@
     if (c.fixed) parts.push(c.fixed + " fixed");
     if (c.unconfirmed) parts.push(c.unconfirmed + " fix not confirmed yet");
     if (c.ended_early) parts.push(c.ended_early + " ended early");
-    if (c.new_problem) parts.push(c.new_problem + " first sent as something new");
+    if (c.new_problem) parts.push(c.new_problem + " sent as a new problem");
     return parts.join(", ");
   }
   function openReport(issueId, sessions) {
@@ -285,7 +285,7 @@
     const acts = [];
     if (g && !r.reported) acts.push(btn("Report this for your study", "rep:" + r.id, () => openReport(r.id, g.sessions), "btn"));
     else if (!g && !lastRep) acts.push(btn("Report this for your study", "rep:" + r.id, () => openReport(r.id, null), "btn ghost"));
-    acts.push(btn("Open the issue", "open:" + r.id, () => P.go("issues", { issueId: r.id }), acts.length ? "linkbtn" : "btn ghost"));
+    acts.push(btn(r.issue.status === "workaround" ? "See what helps" : "Open the problem", "open:" + r.id, () => P.go("issues", { issueId: r.id }), acts.length ? "linkbtn" : "btn ghost"));
 
     return el("div", { class: "panel" },
       el("div", { class: "bar" }, el("h3", { text: title }), ui.statusChip(r.issue.status),
@@ -347,7 +347,7 @@
         el("div", { class: "bar" },
           el("span", { text: stt.text }),
           stt.issue ? ui.statusChip(stt.issue.status) : null,
-          stt.issue ? btn("Open the issue", "sent:" + rec.id, () => P.go("issues", { issueId: stt.issue.id }), "linkbtn") : null)));
+          stt.issue ? btn(stt.issue.status === "workaround" ? "See what helps" : "Open the problem", "sent:" + rec.id, () => P.go("issues", { issueId: stt.issue.id }), "linkbtn") : null)));
     });
     b.append(list);
     if (items.length > 8) b.append(el("p", { class: "hint", text: "Showing the newest 8 of " + items.length + "." }));
@@ -454,7 +454,7 @@
           r.from ? el("span", { class: "hint", text: "was" }) : null,
           r.from ? ui.statusChip(r.from) : null,
           el("span", { class: "hint", text: ui.ago(r.at) }),
-          btn("Open the issue", "since:" + i.id, () => P.go("issues", { issueId: i.id }), "linkbtn")),
+          btn(i.status === "workaround" ? "See what helps" : "Open the problem", "since:" + i.id, () => P.go("issues", { issueId: i.id }), "linkbtn")),
         plan.notNow ? el("span", { class: "hint", text: notNowText(plan) }) : null,
         !plan.notNow && plan.planned ? el("span", { class: "hint", text: "Planned: " + plan.planned }) : null));
     });

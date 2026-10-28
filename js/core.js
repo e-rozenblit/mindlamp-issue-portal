@@ -70,11 +70,11 @@
   ];
   /* Population tags: ids exactly as in the docs/Notion Tags DB. Labels are display text. */
   const POPULATION = [
-    ["personality", "Personality"], ["psychotic", "Psychotic"], ["neurocognitive", "Neurocognitive"],
-    ["neurodevelopmental", "Neurodevelopmental"], ["bipolar", "Bipolar"], ["depressive", "Depressive"],
-    ["obsessive-compulsive", "Obsessive-compulsive"], ["stress-trauma", "Stress and trauma"], ["eating", "Eating"],
-    ["sleep", "Sleep"], ["addictive", "Addictive"], ["anxiety", "Anxiety"],
-    ["sex-gender-sexuality", "Sex, gender and sexuality"], ["family", "Family"], ["low-income", "Low income"],
+    ["personality", "Personality disorders"], ["psychotic", "Psychotic disorders"], ["neurocognitive", "Neurocognitive disorders"],
+    ["neurodevelopmental", "Neurodevelopmental conditions"], ["bipolar", "Bipolar disorders"], ["depressive", "Depression"],
+    ["obsessive-compulsive", "Obsessive-compulsive disorders"], ["stress-trauma", "Stress and trauma"], ["eating", "Eating disorders"],
+    ["sleep", "Sleep problems"], ["addictive", "Addiction and substance use"], ["anxiety", "Anxiety disorders"],
+    ["sex-gender-sexuality", "Sex, gender and sexuality"], ["family", "Families"], ["low-income", "Low income"],
     ["military-veteran", "Military and veterans"], ["race-ethnicity-language", "Race, ethnicity and language"],
     ["child", "Children"], ["adolescent", "Adolescents"], ["young-adult", "Young adults"],
     ["older-adult", "Older adults"], ["other", "Other"]
@@ -961,7 +961,7 @@
       const notNow = own || (settled ? "" : ((lines.find(p => p.notNowReason) || {}).notNowReason) || "");
       /* label: "Why not now: " when the issue itself is Not now; otherwise the line comes from a proposal
          on an issue with another status, so it names what is on hold (D24: a line must make sense on its own). */
-      return { planned: planned, notNow: notNow, notNowLabel: own ? "Why not now: " : "Fix on hold: " };
+      return { planned: planned, notNow: notNow, notNowLabel: own ? "Why not now: " : "Next step: " };
     },
     isFixed(issue) { return issue && issue.status === "fixed"; },
     /* One wording for the open triage counts, on Start here and the Dev meeting page. */
@@ -1124,7 +1124,7 @@
      At most about four main tabs, set by the person's roles across ALL their studies (so tabs don't jump when
      they switch study). Everything else sits under "More", so every page stays reachable (D21). Admins see every tab. */
   const PAGE_NAME = { home: "Start here", guide: "Troubleshoot", issues: "Known problems", study: "Your study",
-    report: "Weekly report", dev: "Dev meeting", admin: "Admin", about: "How this works" };
+    report: "Report a problem", dev: "Dev meeting", admin: "Admin", about: "How this works" };
   const NAV_ORDER = ["home", "guide", "issues", "study", "report", "dev", "admin", "about"];
   const ROLE_TABS = {
     rc: ["home", "guide", "issues", "report"],
