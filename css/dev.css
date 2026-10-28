@@ -1,0 +1,66 @@
+/* Prepare the dev meeting page styles. Use the tokens in index.html only; no new colors. Prefix selectors with #v-dev. */
+/* Readable on a shared screen: body text at least 16px. */
+#v-dev{font-size:16px}
+#v-dev .hint{font-size:14px}
+#v-dev .dev-table{font-size:15px}
+#v-dev .dev-table td.dev-issue{min-width:260px}
+#v-dev .dev-title{font-weight:600}
+#v-dev .dev-new td{color:var(--muted)}
+#v-dev .dev-status{gap:6px;min-width:180px}
+#v-dev .dev-check{display:flex;gap:6px;align-items:center}
+#v-dev .dev-report{font-weight:600}
+/* Severity words under the number: wrap in body text, not the number cell's no-wrap mono. */
+#v-dev .dev-table td.num .hint{white-space:normal;font-family:var(--body);min-width:18ch;max-width:32ch}
+
+/* "How this score was computed" */
+#v-dev details>summary{cursor:pointer;color:var(--accent);font-size:14px;padding-block:4px}
+#v-dev .dev-trace{margin-top:6px}
+#v-dev .dev-trace ul{display:grid;gap:4px;margin-top:6px;font-size:14px;max-width:70ch}
+#v-dev .dev-sum{font:600 13px/1.4 var(--mono);margin:8px 0 0}
+#v-dev .dev-formula ul{display:grid;gap:4px;padding-left:18px}
+
+/* Issue chips: type to find, tap to add */
+#v-dev .dev-pick{display:grid;gap:8px;min-width:0}
+#v-dev .dev-pick input[type=search]{width:100%}
+#v-dev .dev-chips,#v-dev .dev-results{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-width:0}
+#v-dev .dev-chip{display:inline-flex;align-items:center;gap:6px;white-space:normal;max-width:100%;padding:4px 4px 4px 10px;font-size:14px;line-height:1.3}
+#v-dev .dev-x{font:600 12px var(--body);border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:4px 10px;cursor:pointer;min-height:28px}
+#v-dev .dev-add{text-align:left;white-space:normal;max-width:100%}
+
+/* Decision as two choices */
+#v-dev .dev-decision .opts{gap:8px}
+#v-dev .dev-choice{display:flex;align-items:center;gap:8px;padding:8px 16px;border:1px solid var(--line);border-radius:999px;cursor:pointer;min-height:44px;font-size:15px}
+#v-dev .dev-choice:has(input:checked){border-color:var(--accent);background:var(--accent-soft)}
+#v-dev .dev-choice:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+
+/* The two lines study teams see */
+#v-dev .dev-public{border-color:var(--accent);display:grid;gap:10px}
+#v-dev .dev-public>p{margin:0}
+#v-dev .dev-seen{background:var(--accent-soft);padding:8px 10px;border-radius:var(--r);margin:0}
+
+@media (max-width:700px){
+  #v-dev input,#v-dev select,#v-dev textarea{font-size:16px}
+  #v-dev .mini,#v-dev .dev-x{min-height:44px;padding-inline:14px}
+  #v-dev .linkbtn{min-height:44px}
+  #v-dev .dev-table td.dev-issue{min-width:220px}
+}
+/* Phones: each ranked issue as a card, numbers labelled, no sideways scrolling (fresh-eyes review). */
+@media (max-width:600px){
+  #v-dev :is(.dev-table,.dev-since) thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  #v-dev :is(.dev-table,.dev-since),#v-dev :is(.dev-table,.dev-since) :is(tbody,tr,td){display:block;width:100%}
+  #v-dev :is(.dev-table,.dev-since) tr{border-bottom:1px solid var(--line);padding:10px 0}
+  #v-dev :is(.dev-table,.dev-since) td{border:0;padding:2px 0}
+  #v-dev :is(.dev-table,.dev-since) td.dev-issue{min-width:0;padding-bottom:6px}
+  #v-dev .dev-since td.dev-issue{font-weight:600}
+  #v-dev :is(.dev-table,.dev-since) td.num{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline;text-align:left;white-space:normal}
+  #v-dev :is(.dev-table,.dev-since) td[data-label]::before{content:attr(data-label);color:var(--muted);font:500 13px var(--body);min-width:13ch}
+  #v-dev .dev-table td.num .hint{min-width:0;max-width:none}
+  #v-dev .dev-status{min-width:0}
+}
+
+/* Short name, then the full sentence under it (D24) */
+#v-dev .dev-sub{margin-top:2px;font-size:13px;max-width:60ch}
+/* "Not an app problem" tally: feature input, apart from the issue counts (D25) */
+#v-dev .dev-notapp{border-top:1px solid var(--line);padding-top:10px;margin-top:4px;display:grid;gap:4px}
+#v-dev .dev-notapp h4{margin:0;font-size:16px}
+#v-dev .dev-notapp p{margin:0}

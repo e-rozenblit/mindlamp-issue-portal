@@ -1,0 +1,9 @@
+/* Set up your study page styles. Owner: B6. Use the tokens in index.html only; no new colors. Prefix selectors with #v-study. */
+#v-study .sd-defs{border:1px solid var(--line);border-radius:var(--r);padding:8px 12px;background:var(--surface)}
+#v-study .sd-defs>summary{cursor:pointer;font-weight:600;min-height:32px;display:flex;align-items:center}
+#v-study .sd-defs ul{margin:8px 0 0;display:grid;gap:6px}
+#v-study .sd-defs li{line-height:1.4}
+@media (max-width:700px){
+  #v-study input[type=text],#v-study select{font-size:16px}
+  #v-study .sd-defs>summary,#v-study .linkbtn{min-height:44px}
+}

@@ -1,0 +1,676 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>mindLAMP Issue Portal</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@500;700&family=Public+Sans:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a field-ops console. Sticky tab bar, one working column, cards only for issues and forms. */
+:root{
+  --bg:#f3f5f6; --surface:#ffffff; --ink:#18232b; --muted:#56656f; --line:#d6dde1;
+  --accent:#1f5f8b; --accent-ink:#ffffff; --accent-soft:#e3eef5;
+  --ok:#2f7a4b; --ok-soft:#e2f1e7; --warn:#9a5b00; --warn-soft:#fbefd9; --bad:#a3312b; --bad-soft:#f8e3e1; --info-soft:#ece9f6; --info:#55418f;
+  --display:"Schibsted Grotesk","Helvetica Neue",Arial,sans-serif;
+  --body:"Public Sans","Segoe UI",system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+  --r:6px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#11181d; --surface:#18222a; --ink:#e4ebef; --muted:#9aabb6; --line:#2c3a44;
+  --accent:#6fb0dd; --accent-ink:#0d1418; --accent-soft:#1b3242;
+  --ok:#7cc79a; --ok-soft:#173326; --warn:#e6b25c; --warn-soft:#3a2c12; --bad:#ef8f86; --bad-soft:#3d1d1b; --info-soft:#26213a; --info:#b5a6ec;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#11181d; --surface:#18222a; --ink:#e4ebef; --muted:#9aabb6; --line:#2c3a44;
+  --accent:#6fb0dd; --accent-ink:#0d1418; --accent-soft:#1b3242;
+  --ok:#7cc79a; --ok-soft:#173326; --warn:#e6b25c; --warn-soft:#3a2c12; --bad:#ef8f86; --bad-soft:#3d1d1b; --info-soft:#26213a; --info:#b5a6ec;
+  color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+img{max-width:100%}
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{background:var(--bg);color:var(--ink);font:15px/1.55 var(--body);margin:0}
+.wrap{max-width:980px;margin:0 auto;padding-inline:16px;padding-block:0 64px}
+header.top{padding-block:28px 12px}
+.eyebrow{font:600 11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+h1{font:700 clamp(26px,4vw,34px)/1.1 var(--display);margin:.35em 0 .3em;text-wrap:balance}
+h2{font:700 21px/1.2 var(--display);margin:0 0 .4em;text-wrap:balance}
+h3{font:600 16px/1.3 var(--display);margin:0;text-wrap:balance}
+p{margin:0 0 .8em;max-width:68ch}
+.lede{color:var(--muted);max-width:66ch}
+nav.tabs{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);border-bottom:1px solid var(--line);display:flex;gap:4px;overflow-x:auto;padding-block:8px}
+nav.tabs button{font:600 14px var(--body);background:none;border:0;color:var(--muted);padding:8px 12px;border-radius:var(--r);cursor:pointer;white-space:nowrap}
+nav.tabs button[aria-selected="true"]{background:var(--accent-soft);color:var(--ink)}
+nav.tabs button:focus-visible,button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+section.view{padding-block:24px 0;display:grid;gap:18px}
+.bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.bar label{font-size:13px;color:var(--muted);display:flex;gap:6px;align-items:center}
+select,input[type=text],input[type=number],input[type=date],textarea{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:7px 9px;max-width:100%}
+textarea{width:100%;min-height:72px;resize:vertical}
+.btn{font:600 14px var(--body);border-radius:var(--r);padding:8px 14px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);cursor:pointer}
+.btn.ghost{background:transparent;color:var(--accent)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.list{display:grid;gap:10px}
+.issue{background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
+.issue>summary{list-style:none;cursor:pointer;padding:14px 16px;display:grid;grid-template-columns:1fr auto;gap:6px 14px;align-items:start}
+.issue>summary::-webkit-details-marker{display:none}
+.issue .meta{display:flex;flex-wrap:wrap;gap:6px;grid-column:1/-1}
+.issue .side{text-align:right;font:600 13px var(--mono);color:var(--muted);white-space:nowrap}
+.issue .side b{display:block;font-size:20px;color:var(--ink)}
+.body{padding:0 16px 16px;display:grid;gap:12px;min-width:0}
+.k{font:600 11px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.chip{font:600 12px/1 var(--body);padding:4px 8px;border-radius:999px;background:var(--accent-soft);color:var(--ink);white-space:nowrap}
+.chip.status-heard{background:var(--info-soft);color:var(--info)}
+.chip.status-understood,.chip.status-scoping{background:var(--accent-soft);color:var(--accent)}
+.chip.status-workaround{background:var(--warn-soft);color:var(--warn)}
+.chip.status-in-progress,.chip.status-fixed{background:var(--ok-soft);color:var(--ok)}
+.chip.status-not-now,.chip.status-needs-detail{background:var(--bad-soft);color:var(--bad)}
+.chip.sev{background:transparent;border:1px solid var(--line);color:var(--muted)}
+.chip.sev.hi{border-color:var(--bad);color:var(--bad)}
+ul.clean{margin:0;padding-left:18px}
+.harm{border-left:3px solid var(--warn);background:var(--warn-soft);padding:8px 10px;border-radius:0 var(--r) var(--r) 0}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;display:grid;gap:12px;min-width:0}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.field{display:grid;gap:4px;min-width:0}
+.field>span{font-weight:600;font-size:14px}
+.hint{font-size:13px;color:var(--muted)}
+fieldset{border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;margin:0;min-width:0}
+legend{font-weight:600;font-size:14px;padding:0 4px}
+.opts{display:flex;flex-wrap:wrap;gap:6px 14px}
+.opts label{display:flex;gap:6px;align-items:center;font-size:14px}
+.notice{font-size:13px;padding:10px 12px;border-radius:var(--r);background:var(--accent-soft)}
+.notice.warn{background:var(--warn-soft)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:var(--r);font-weight:600;z-index:9}
+.boosts{display:grid;gap:6px}
+.boost{font-size:14px;border-top:1px solid var(--line);padding-top:6px}
+.boost b{font-weight:600}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;padding:8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font:600 11px var(--mono);letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.scroll{overflow-x:auto}
+.steps{display:grid;gap:10px;counter-reset:s}
+.step{display:grid;grid-template-columns:28px 1fr;gap:10px;align-items:start}
+.step .n{font:600 13px var(--mono);width:26px;height:26px;border-radius:50%;border:1px solid var(--line);display:grid;place-items:center;color:var(--muted)}
+.step.done .n{background:var(--ok-soft);color:var(--ok);border-color:var(--ok)}
+.why{font-size:13px;color:var(--muted)}
+.step .acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
+.step .acts button{font:600 12px var(--body);border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:4px 10px;cursor:pointer}
+.step .acts button[aria-pressed="true"]{border-color:var(--ok);background:var(--ok-soft);color:var(--ok)}
+.empty{color:var(--muted);font-size:14px;padding:16px;border:1px dashed var(--line);border-radius:var(--r)}
+.ladder{display:flex;flex-wrap:wrap;gap:6px}
+.chip.stamp{background:var(--ok-soft);color:var(--ok)}
+.credit{font-size:13px;color:var(--muted)}
+.roles{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;font-size:14px}
+.roles .k{margin:0}
+.mini{font:600 12px var(--body);border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:3px 9px;cursor:pointer}
+@media (prefers-reduced-motion:no-preference){.issue[open]>.body{animation:in .18s ease-out}@keyframes in{from{opacity:.4;transform:translateY(-3px)}to{opacity:1;transform:none}}}
+.authbox{max-width:420px}
+.who{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center}
+.linkbtn{background:none;border:0;color:var(--accent);font:inherit;cursor:pointer;padding:0;text-decoration:underline}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="eyebrow">Pilot · October 2026</div>
+    <h1>mindLAMP Issue Portal</h1>
+    <p class="lede">Where study teams report recurring problems with the platform, say how they affect their study, and see what other teams are running into and how they work around it. What you report here goes to the weekly developer meeting.</p>
+    <div class="who" id="who" hidden>
+      <label class="field" style="display:flex;gap:6px;align-items:center"><span class="k" style="margin:0">Your name</span><input type="text" id="me-name" maxlength="80" placeholder="Shown with your boosts"></label>
+      <span class="hint" id="whoami"></span>
+      <button class="linkbtn" type="button" id="signout">Sign out</button>
+    </div>
+    <div class="roles" id="roles" hidden><span class="k">Your role</span></div>
+  </header>
+
+  <form class="panel authbox" id="auth" hidden novalidate>
+    <h2>Sign in</h2>
+    <p class="hint">Use the email and password the mindLAMP team sent you.</p>
+    <label class="field"><span>Email</span><input type="text" id="auth-email" autocomplete="username" inputmode="email"></label>
+    <label class="field"><span>Password</span><input type="password" id="auth-pass" autocomplete="current-password" style="font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:7px 9px"></label>
+    <div class="bar"><button class="btn" type="submit">Sign in</button><span class="hint" id="auth-status"></span></div>
+  </form>
+
+  <nav class="tabs" role="tablist" aria-label="Sections">
+    <button role="tab" data-tab="issues" aria-selected="true">Issues</button>
+    <button role="tab" data-tab="guide" aria-selected="false">Troubleshoot</button>
+    <button role="tab" data-tab="report" aria-selected="false">Report</button>
+    <button role="tab" data-tab="study" aria-selected="false">Your study</button>
+    <button role="tab" data-tab="dev" aria-selected="false">Dev meeting</button>
+    <button role="tab" data-tab="about" aria-selected="false">About</button>
+  </nav>
+
+  <!-- ISSUES -->
+  <section class="view" id="v-issues">
+    <div class="bar">
+      <label>Area <select id="f-area">
+        <option value="">All</option><option value="app">Participant app</option><option value="passive">Passive data and battery</option><option value="surveys">Surveys and scheduling</option><option value="activities">Activities and games</option><option value="staff">Staff tools and data</option>
+      </select></label>
+      <label>Sort <select id="f-sort">
+        <option value="signal">Priority signal</option><option value="teams">Most teams</option><option value="boosts">Most boosted</option><option value="recent">Recently reported</option>
+      </select></label>
+      <label>Perspective <select id="f-role"><option value="">All contributors</option></select></label>
+      <label><input type="text" id="f-q" placeholder="Search issues" aria-label="Search issues"></label>
+    </div>
+    <div class="list" id="issue-list"><div class="empty">Loading issues…</div></div>
+  </section>
+
+  <!-- GUIDE -->
+  <section class="view" id="v-guide" hidden>
+    <div>
+      <h2>Troubleshooting guide</h2>
+      <p class="lede">Work through the checks with the participant, in order. Each check says why it matters. When you finish, log what happened in one step. Only counts and setup details are sent; nothing about the participant.</p>
+    </div>
+    <div class="panel">
+      <div class="grid2">
+        <label class="field"><span>What is the participant experiencing?</span>
+          <select id="g-symptom"></select></label>
+        <label class="field"><span>Participant's phone</span>
+          <select id="g-os"><option value="ios">iPhone</option><option value="android">Android</option><option value="unknown">Not sure yet</option></select></label>
+      </div>
+      <div class="opts" id="g-profile">
+        <label><input type="checkbox" id="g-gps" checked> Study collects GPS</label>
+        <label><input type="checkbox" id="g-wear"> Study uses a wearable or health app</label>
+        <label><input type="checkbox" id="g-own"> Our team runs its own server or dashboard</label>
+      </div>
+    </div>
+    <div class="panel" id="g-steps-wrap">
+      <div class="steps" id="g-steps"></div>
+      <div class="bar">
+        <button class="btn" id="g-log">Log this in a report</button>
+        <span class="hint" id="g-summary"></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- REPORT -->
+  <section class="view" id="v-report" hidden>
+    <div>
+      <h2>Report an issue</h2>
+      <p class="lede">One report per issue is enough, whether it came up this week or has been going on for months. Summarize across participants: how many were affected, what it did, and what fixed it.</p>
+    </div>
+    <div class="notice warn">Do not enter participant names, IDs, contact details, dates of birth, locations or anything else that identifies a person. Those stay in your own study records.</div>
+    <form class="panel" id="r-form" novalidate>
+      <label class="field"><span>Which issue?</span>
+        <select id="r-issue"></select>
+        <span class="hint">Choose "Something new" if it isn't listed.</span></label>
+      <div id="r-new" class="grid2" hidden>
+        <label class="field"><span>Short title</span><input type="text" id="r-title" maxlength="120"></label>
+        <label class="field"><span>What staff or participants see</span><input type="text" id="r-symptom" maxlength="300"></label>
+      </div>
+      <div class="grid2">
+        <label class="field"><span>Your study</span><input type="text" id="r-study" maxlength="80" placeholder="Study short name"></label>
+        <label class="field"><span>Most recent time it happened</span><input type="date" id="r-week"></label>
+        <label class="field"><span>How long has it been going on?</span><select id="r-span"><option value="week">This week only</option><option value="weeks">A few weeks</option><option value="months">Months</option><option value="start">Since the study started</option><option value="unsure">Not sure</option></select></label>
+        <label class="field"><span>Participants affected</span><input type="number" id="r-n" min="0" max="9999" inputmode="numeric"></label>
+        <label class="field"><span>Is this new?</span><select id="r-recur"><option value="new">First time we've seen it</option><option value="recurring">It keeps happening</option><option value="returned">It came back after it was fixed</option></select></label>
+      </div>
+
+      <fieldset><legend>Setup</legend>
+        <div class="grid2" id="r-setup"></div>
+        <p class="hint" id="r-setup-note"></p>
+      </fieldset>
+
+      <fieldset><legend>What do you think caused it?</legend>
+        <div class="opts" id="r-attr"></div>
+      </fieldset>
+
+      <fieldset><legend>How did it affect your study?</legend>
+        <div class="grid2">
+          <label class="field"><span>What did it stop?</span><select id="r-stops"><option value="none">Nothing</option><option value="slowed">Slowed someone down</option><option value="prevented">Prevented a task</option><option value="dropout">Led to dropout or a dropout request</option></select></label>
+          <label class="field"><span>What did it do to the data?</span><select id="r-data"><option value="none">Nothing</option><option value="missing">Data missing</option><option value="wrong">Data wrong or misleading</option><option value="unknown">Can't tell</option></select></label>
+          <label class="field"><span>Who absorbed the cost?</span><select id="r-cost"><option value="participant">Participant</option><option value="staff">Study staff</option><option value="analyst">Analyst, later</option><option value="nobody">Nobody yet</option></select></label>
+          <label class="field"><span>Effect on participants (optional)</span><select id="r-mech"><option value="">Skip</option><option value="motivation">Less willing to open or engage</option><option value="ability">Couldn't do the task</option><option value="understanding">Did it, but misunderstood it</option><option value="trust">Doubted the app or the study</option></select></label>
+        </div>
+        <label class="field"><span>In your words (optional)</span><textarea id="r-words" maxlength="800" placeholder="For example: participants stopped trusting that their surveys counted, and two asked if they should keep going."></textarea></label>
+      </fieldset>
+
+      <label class="field"><span>What fixed it, if anything?</span><input type="text" id="r-fix" maxlength="300"></label>
+      <div class="bar"><button class="btn" type="submit" id="r-submit">Submit report</button><span class="hint" id="r-status"></span></div>
+    </form>
+  </section>
+
+  <!-- STUDY -->
+  <section class="view" id="v-study" hidden>
+    <div>
+      <h2>Your study's goals</h2>
+      <p class="lede">Rank what matters most for your study once. The portal uses it to weigh issues by what they threaten for the studies reporting them. You can add how participants would rank the same goals, from a debrief or a lived-experience panel.</p>
+    </div>
+    <form class="panel" id="s-form" novalidate>
+      <div class="grid2">
+        <label class="field"><span>Study short name</span><input type="text" id="s-name" maxlength="80"></label>
+        <label class="field"><span>Where it runs</span><select id="s-deploy"><option value="bidmc">mindLAMP, BIDMC</option><option value="hub">An institutional server listed on the login screen</option><option value="self">Our own server, not listed</option><option value="unsure">Not sure</option></select></label>
+      </div>
+      <div class="grid2">
+        <fieldset><legend>Researchers: top 3 goals, in order</legend><div class="field" id="s-rank-r"></div></fieldset>
+        <fieldset><legend>Participants: top 3 goals, in order (optional)</legend><div class="field" id="s-rank-p"></div></fieldset>
+      </div>
+      <div class="bar"><button class="btn" type="submit">Save study goals</button><span class="hint" id="s-status"></span></div>
+    </form>
+    <div class="panel"><h3>Studies so far</h3><div id="s-list" class="scroll"></div></div>
+  </section>
+
+  <!-- DEV -->
+  <section class="view" id="v-dev" hidden>
+    <div>
+      <h2>For the developer meeting</h2>
+      <p class="lede">Issues ranked by what study teams report. The priority signal is a starting point for discussion, not a decision. Every part of it is shown so you can disagree with it.</p>
+      <p class="notice">Until teams start reporting, the impact ratings on starter issues are provisional: set by the platform team from existing evidence (troubleshooting records, past reports, a partner study's log).</p>
+    </div>
+    <div class="panel scroll"><table id="d-table"><thead><tr><th>Issue</th><th>Status</th><th>Teams</th><th>Severity</th><th>Boosts</th><th>Reports</th><th>Signal</th></tr></thead><tbody></tbody></table>
+      <p class="hint">Signal = severity (what it stops, 0 to 3, plus what it does to data, 0 to 3) + breadth (1 team = 1, 2 to 3 = 2, 4 to 6 = 3, 7 or more = 4) + boosts (up to 3) + reports this month (up to 3).</p>
+    </div>
+
+    <div>
+      <h2>Proposal card</h2>
+      <p class="lede">Fill one in for every idea raised in the meeting, whether it came from a user report or from a contributor.</p>
+    </div>
+    <form class="panel" id="p-form" novalidate>
+      <div class="grid2">
+        <label class="field"><span>What</span><input type="text" id="p-what" maxlength="200"></label>
+        <label class="field"><span>Proposed by</span><input type="text" id="p-by" maxlength="80"></label>
+      </div>
+      <label class="field"><span>Who it helps</span><select id="p-issues" multiple size="5"></select><span class="hint">Pick the portal issues it addresses (Ctrl/Cmd-click for several). Leave empty if it's a contributor need with no user report yet.</span></label>
+      <fieldset><legend>What it touches</legend><div class="opts" id="p-zone"></div><p class="hint" id="p-zone-out"></p></fieldset>
+      <div class="grid2">
+        <label class="field"><span>Reach: which servers get it, and how (including teams on their own servers)</span><input type="text" id="p-reach" maxlength="200"></label>
+        <label class="field"><span>Effects on other work or live studies</span><input type="text" id="p-effects" maxlength="300"></label>
+        <label class="field"><span>Can it be rolled back without data loss?</span><select id="p-rev"><option value="yes">Yes</option><option value="no">No</option><option value="unsure">Not sure</option></select></label>
+        <label class="field"><span>Test plan</span><input type="text" id="p-test" maxlength="300" placeholder="What we'll check, on which devices"></label>
+        <label class="field"><span>Size</span><select id="p-size"><option>S</option><option>M</option><option>L</option></select></label>
+        <label class="field"><span>Owner and reviewer</span><input type="text" id="p-owner" maxlength="120"></label>
+        <label class="field"><span>Decision</span><select id="p-dec"><option value="go">Go</option><option value="conditions">Go with conditions</option><option value="scope">Needs scoping first</option><option value="not-now">Not now</option></select></label>
+        <label class="field"><span>Reason or conditions</span><input type="text" id="p-reason" maxlength="300"></label>
+      </div>
+      <div class="bar"><button class="btn" type="submit">Save proposal</button><span class="hint" id="p-status"></span></div>
+    </form>
+    <div class="panel"><h3>Proposals</h3><div id="p-list" class="scroll"></div></div>
+  </section>
+
+  <!-- ABOUT -->
+  <section class="view" id="v-about" hidden>
+    <div class="panel">
+      <h2>What this is</h2>
+      <p>Many problems with mindLAMP are solved or worked around inside each study and never reach the platform team. This portal collects them in one shared format, so the team can see how common a problem is, what it costs studies, and which fixes matter most. It also lets teams see what others are running into and which workarounds help.</p>
+      <h3>What gets shared</h3>
+      <p>Records about individual participants stay with your team, under your own IRB. The portal only receives summaries: how many participants, what kind of phone and setup, what it affected, what fixed it.</p>
+      <h3>A contributor community</h3>
+      <p>Everyone here contributes: a coordinator who documents a problem or a workaround, an analyst who spots bad data, a developer who fixes it. Contributions are credited by name on the issue, and the platform team marks issues and workarounds it has confirmed.</p>
+      <p class="hint">Questions for you: How much recognition would make this worth your team's time (credit on issues, acknowledgment in release notes, a citable contributor list)? Should contributors themselves be verified, or only the issues and workarounds? Is "contributor" the right word for what coordinators do here? Answer in the feedback form below.</p>
+      <h3>What the statuses mean</h3>
+      <div class="ladder" id="a-ladder"></div>
+      <p class="hint">"Not now" always comes with a reason, so you get an answer instead of silence.</p>
+    </div>
+    <form class="panel" id="fb-form" novalidate>
+      <h2>Feedback on this prototype</h2>
+      <p class="hint">Your comments shape the next version. What's missing, confusing, or not worth the time?</p>
+      <label class="field"><span>Which part?</span><select id="fb-part"><option>Issues board</option><option>Troubleshooting guide</option><option>Report form</option><option>Study goals</option><option>Dev meeting view</option><option>Contributor recognition</option><option>Overall idea</option></select></label>
+      <label class="field"><span>Your comment</span><textarea id="fb-text" maxlength="1500"></textarea></label>
+      <div class="bar"><button class="btn" type="submit">Send feedback</button><span class="hint" id="fb-status"></span></div>
+    </form>
+  </section>
+</div>
+
+<script>
+/* ---------- static content ---------- */
+const AREAS={app:"Participant app",passive:"Passive data and battery",surveys:"Surveys and scheduling",activities:"Activities and games",staff:"Staff tools and data"};
+const STATUS={heard:"Heard",understood:"Cause understood",workaround:"Workaround known","needs-detail":"Needs detail",scoping:"Being scoped","in-progress":"In progress","not-now":"Not now",fixed:"Fixed"};
+const STOPS={none:"Stops nothing",slowed:"Slows people down",prevented:"Prevents tasks",dropout:"Dropout risk"};
+const DATA={none:"No data effect",missing:"Data missing",wrong:"Data wrong",unknown:"Data: can't tell"};
+const COST={participant:"Cost: participants",staff:"Cost: staff",analyst:"Cost: analysts",nobody:"No cost yet"};
+const STOP_PTS={none:0,slowed:1,prevented:2,dropout:3}, DATA_PTS={none:0,missing:2,wrong:3,unknown:2};
+const GOALS=["Data completeness","Data validity","Data consistency","Engagement","Retention","Low participant burden","Ease of use","Participant trust and privacy","Gives something back to participants","Credit or payment","Low staff workload (monitoring, troubleshooting)","Analysis and visualization","Clinical benefit","Scientific impact"];
+const ROLES=[["lead","Study lead"],["rc","Coordinator or RA"],["analyst","Data analyst"],["dev","Developer"],["platform","mindLAMP platform team"]];
+const ROLE_NAME=Object.fromEntries(ROLES);
+const ATTR=[["platform","mindLAMP (app, server, dashboard, activity)"],["phone","The phone or its settings"],["behavior","Participant behavior"],["design","Study design or setup"],["unsure","Not sure"]];
+const ZONES=[
+ ["act-new","A new activity, or one no running study uses","green"],["toolkit","Toolkit or visualizations","green"],["docs","Documentation","green"],["dash-cosmetic","Small dashboard fixes","green"],
+ ["dash-feature","Dashboard features","yellow"],["app-ui","App screens","yellow"],["survey","Survey features","yellow"],
+ ["act-live","An activity that running studies use","red"],["comms","How the parts talk to each other (app, dashboard, server, database)","red"],["server","Server, API or data model","red"],["auth","Login and permissions","red"],["notif","Notifications (tied to the login work)","red"],["collect","Mobile data collection or upload","red"],["live","Anything that changes what running studies collect or see","red"]];
+const ZONE_TEXT={green:"Green: go ahead with a designated reviewer.",yellow:"Yellow: plan first and name a reviewer.",red:"Red: can break other teams' servers or running studies. Design review, owner sign-off and a written test plan."};
+
+/* Setup fields. Kept as data so they can change after the findability check. */
+const SETUP=[
+ {id:"deploy",label:"Server (as shown on the login screen)",type:"select",opts:[["bidmc","mindLAMP, BIDMC"],["procan","ProCAN, Yale"],["predictor","PREDiCTOR, Mount Sinai"],["mclean","McLean ITP"],["abhacus","ABHACUS, Oxford Health"],["ampscz","AMP Schizophrenia, Yale"],["levelup","LevelUp"],["other","Other"],["unsure","Don't know"]]},
+ {id:"dashurl",label:"Dashboard web address (only if Other)",type:"text",ph:"e.g. dashboard.example.org"},
+ {id:"os",label:"Phone type",type:"select",opts:[["ios","iPhone"],["android","Android"],["both","Both"],["unsure","Not sure"]]},
+ {id:"osver",label:"OS version",type:"text",ph:"iPhone: Settings > General > About"},
+ {id:"appver",label:"mindLAMP app version",type:"text",ph:"iPhone: Settings > General > iPhone Storage > mindLAMP"},
+ {id:"device",label:"Phone model",type:"text",ph:"e.g. iPhone 8, Galaxy A15"},
+ {id:"activity",label:"Activity involved (optional)",type:"text",ph:"e.g. nightly survey, Jewels"},
+ {id:"when",label:"When it happened (optional)",type:"text",ph:"Date and rough time"},
+ {id:"wearable",label:"Wearable or health app linked?",type:"select",opts:[["","Skip"],["no","No"],["apple","Apple Health / Watch"],["hc","Health Connect / Samsung Health"],["fitbit","Fitbit"],["oura","Oura"],["other","Other"]]}
+];
+const SETUP_NOTE="Fill in what you know. The app does not show its own version; find it in the phone's settings (Android: Settings > Apps > mindLAMP). The platform team works out the server and activity versions from the server and date, so name the activity and roughly when.";
+
+/* Troubleshooting paths. Each step: what to check, why it matters, which phones or study setups it applies to. */
+const GUIDE={
+ logout:{label:"Logged out, or can't sign in",issue:"i01",steps:[
+  {t:"Ask whether the app shows the login screen, or an error after signing in.",w:"An error after signing in points to the account or server. A plain login screen means the session ended."},
+  {t:"Check the username and password character by character, including capitals and the full username.",w:"A meaningful share of 'can't log in' contacts are typing errors, and they are the fastest to rule out."},
+  {t:"Confirm the server address on the login screen matches your study's.",w:"Teams on their own server need their own address. The default address will not work for them.",own:true},
+  {t:"Ask whether the app updated recently.",w:"Logouts cluster right after app updates. Noting it helps the platform team find the cause."},
+  {t:"Before reinstalling, have the participant open the app on Wi-Fi, charged, and wait a few minutes.",w:"Data collected but not yet uploaded may be lost when the app is reinstalled or the session is reset."},
+  {t:"Sign the participant back in and confirm a survey submits.",w:"Signing in is not the same as working. A test submission confirms data reaches the server."}]},
+ noreminder:{label:"Not getting survey reminders",issue:"i03",steps:[
+  {t:"Ask whether reminders never arrive, or arrive silently.",w:"Silent reminders are usually a phone setting. Missing ones can be the phone or the platform."},
+  {t:"Check notifications are allowed for mindLAMP, with sound on.",w:"OS updates and phone cleaners sometimes turn these off."},
+  {t:"Check Do Not Disturb, Focus or Sleep schedules.",w:"Evening surveys often fall inside a sleep schedule, which silences them."},
+  {t:"Ask about Bluetooth hearing aids or headphones.",w:"Notification sounds can play through a connected device the participant isn't wearing."},
+  {t:"Check battery optimization is off for mindLAMP.",w:"Android can stop apps in the background to save battery, which delays or drops reminders.",os:"android"},
+  {t:"Check Background App Refresh is on for mindLAMP.",w:"Without it, the app can't prepare reminders in the background.",os:"ios"},
+  {t:"Check the phone is on Wi-Fi or mobile data.",w:"Reminders need a connection to arrive."},
+  {t:"If everything looks right and reminders still don't come, set a phone alarm as a backup and report it.",w:"Unexplained cases are the ones the platform team most needs to hear about."}]},
+ notrecorded:{label:"Survey done but not recorded",issue:"i05",steps:[
+  {t:"Ask the participant to describe the last screen they saw after answering.",w:"If they never saw a confirmation, the submit may not have gone through."},
+  {t:"Check the dashboard for that day's entry.",w:"Sometimes the data arrived and only the streak or badge is wrong."},
+  {t:"Ask whether the screen went white or froze after submitting.",w:"A white screen after submitting is a known pattern and worth reporting separately."},
+  {t:"Show them to tap Submit and wait for the confirmation before closing the app.",w:"Closing the app too quickly can cut off the upload."}]},
+ passive:{label:"Passive data missing",issue:"i08",steps:[
+  {t:"Check which data is missing (GPS, motion, everything) and since when.",w:"One stream missing points to a permission. Everything missing points to the app not running."},
+  {t:"Check location permission is set to Always, not While Using.",w:"Phones can switch it back to While Using, which stops background GPS.",gps:true},
+  {t:"Check Low Power Mode is off.",w:"Low Power Mode pauses background activity, including data collection.",os:"ios"},
+  {t:"Check battery optimization is off for mindLAMP.",w:"Android may stop the app in the background to save battery.",os:"android"},
+  {t:"Ask whether they force-quit the app (swiping it away).",w:"A force-quit app can't collect data until it is opened again. Closing it normally is fine."},
+  {t:"Ask them to open the app and leave it running in the background.",w:"Opening the app restarts collection in many cases."},
+  {t:"Check the health app is installed and connected before mindLAMP.",w:"Install order matters for some wearable setups; otherwise steps or sleep may never arrive.",wear:true},
+  {t:"If permissions are all correct and data still doesn't arrive, report it.",w:"These cases can't be fixed by study staff and are the most useful reports."}]},
+ battery:{label:"Battery draining fast",issue:"i10",steps:[
+  {t:"Ask how often they now charge, compared with before the study.",w:"A rough before-and-after is the most useful measure we have right now."},
+  {t:"Note the phone model and age.",w:"Older phones drain faster. This helps tell a phone problem from an app problem."},
+  {t:"Check the battery settings screen for how much mindLAMP uses.",w:"This shows whether mindLAMP is the main drain or something else is."},
+  {t:"Offer a portable charger if your study provides one.",w:"Keeping the participant in the study matters more than finding the cause today."}]},
+ white:{label:"White screen, freeze or crash",issue:"i21",steps:[
+  {t:"Ask what they were doing when it happened.",w:"Knowing the screen or activity narrows the cause a lot."},
+  {t:"Close the app normally and reopen it.",w:"Often enough, and it doesn't risk data."},
+  {t:"Restart the phone.",w:"Safer than reinstalling."},
+  {t:"Clear the app cache.",w:"Clears stuck content without signing out.",os:"android"},
+  {t:"Only then, reinstall, after opening the app on Wi-Fi and charged for a few minutes.",w:"Reinstalling can lose data not yet uploaded."}]},
+ reach:{label:"Can't find or reach a survey",issue:"i13",steps:[
+  {t:"Ask whether they missed or dismissed the reminder.",w:"Once dismissed, a survey may be unreachable unless it is visible in a tab."},
+  {t:"Check whether your protocol allows completing it outside the scheduled time.",w:"Making a survey visible lets participants complete it any time, which affects timing-sensitive protocols."},
+  {t:"Record which survey and how often this happens.",w:"This is one of the most common problems across teams, and counts help prioritize it."}]}
+};
+
+/* ---------- helpers ---------- */
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+function el(tag,attrs={},...kids){const e=document.createElement(tag);for(const[k,v]of Object.entries(attrs)){if(k==="class")e.className=v;else if(k==="text")e.textContent=v;else if(v!==undefined&&v!==null&&v!==false)e.setAttribute(k,v===true?"":v)}for(const k of kids.flat()){if(k==null)continue;e.append(k.nodeType?k:document.createTextNode(String(k)))}return e}
+function toast(msg){const t=el("div",{class:"toast",role:"status",text:msg});document.body.append(t);setTimeout(()=>t.remove(),2600)}
+function storageGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
+function storageSet(k,v){try{localStorage.setItem(k,v)}catch(e){}}
+function viewerKey(){let k=storageGet("ip-viewer");if(!k){k="v"+Math.random().toString(36).slice(2,12);storageSet("ip-viewer",k)}return k}
+function myRoles(){return store.profile?.roles||[]}
+function rolesText(r){return (r||[]).map(x=>ROLE_NAME[x]).filter(Boolean).join(", ")}
+function breadth(n){return n>=7?4:n>=4?3:n>=2?2:1}
+
+/* ---------- data layer: Supabase ---------- */
+const SUPABASE_URL="https://vhtyfdpwchlzaupurgxc.supabase.co";
+const SUPABASE_KEY="sb_publishable_r0PqchSXE0D7df1xf9Rq0w_dWTDaJeH";
+const sb=window.supabase?window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY):null;
+const store={db:null,uid:null,email:null,profile:null,loaders:{},
+  async init(){
+    if(!sb)return;
+    const {data:{session}}=await sb.auth.getSession();
+    if(!session)return;
+    this.db=sb;this.uid=session.user.id;this.email=session.user.email;
+    const {data}=await sb.from("profiles").select("*").eq("id",this.uid).maybeSingle();
+    this.profile=data||{id:this.uid,name:"",roles:[]};
+  },
+  watch(col,cb){
+    if(!this.db)return;
+    const load=async()=>{const {data,error}=await sb.from("docs").select("id,data,author,created_at").eq("collection",col);if(error){console.warn(col,error.message);return}cb(data.map(r=>({...r.data,id:r.id,author:r.author,created:r.data.created||r.created_at})))};
+    this.loaders[col]=load;load();
+    sb.channel("docs-"+col).on("postgres_changes",{event:"*",schema:"public",table:"docs",filter:"collection=eq."+col},load).subscribe();
+  },
+  refresh(col){this.loaders[col]?.()},
+  async add(col,data){
+    if(!this.db)throw{code:"offline"};
+    const {error}=await sb.from("docs").insert({collection:col,id:crypto.randomUUID(),author:this.uid,data:{...data,roles:myRoles(),created:new Date().toISOString()}});
+    if(error)throw error;this.refresh(col);
+  },
+  async put(path,data){
+    if(!this.db)throw{code:"offline"};
+    const [col,id]=path.split("/");
+    const {error}=await sb.from("docs").upsert({collection:col,id,author:this.uid,updated_at:new Date().toISOString(),data:{...data,roles:myRoles(),created:new Date().toISOString()}});
+    if(error)throw error;this.refresh(col);
+  },
+  async patch(path,data){
+    if(!this.db)throw{code:"offline"};
+    const [col,id]=path.split("/");
+    const cur=(S[col]||[]).find(x=>x.id===id)||{};
+    const {author,created,...rest}=cur;
+    const {error}=await sb.from("docs").update({data:{...rest,...data},updated_at:new Date().toISOString()}).eq("collection",col).eq("id",id);
+    if(error)throw error;this.refresh(col);
+  },
+  async saveProfile(p){
+    if(!this.db)return;
+    this.profile={...this.profile,...p};
+    const {error}=await sb.from("profiles").upsert({id:this.uid,name:this.profile.name||"",roles:this.profile.roles||[],updated_at:new Date().toISOString()});
+    if(error)toast("Couldn't save your profile.");
+  },
+  async names(ids){
+    if(!this.db||!ids.length)return{};
+    const {data}=await sb.from("profiles").select("id,name").in("id",ids);
+    return Object.fromEntries((data||[]).map(p=>[p.id,p]));
+  }
+};
+function writeError(e){
+  if(e&&e.code==="offline")return "Sign in to save.";
+  if(e&&(e.code==="42501"||/row-level security/i.test(e.message||"")))return "You don't have permission to change this.";
+  return "Couldn't save. Try again in a moment.";
+}
+
+/* ---------- state ---------- */
+const S={issues:[],boosts:[],reports:[],studies:[],proposals:[],isOwner:false};
+
+/* ---------- tabs ---------- */
+function showTab(name){$$("nav.tabs button").forEach(b=>b.setAttribute("aria-selected",b.dataset.tab===name));$$("section.view").forEach(v=>v.hidden=v.id!=="v-"+name);storageSet("ip-tab",name)}
+$$("nav.tabs button").forEach(b=>b.addEventListener("click",()=>showTab(b.dataset.tab)));
+
+/* ---------- issues ---------- */
+function stats(issue){
+  const boosts=S.boosts.filter(b=>b.issueId===issue.id);
+  const monthAgo=Date.now()-30*864e5;
+  const reports=S.reports.filter(r=>r.issueId===issue.id);
+  const recent=reports.filter(r=>Date.parse(r.created)>monthAgo);
+  const reportTeams=new Set(reports.map(r=>(r.study||"").trim().toLowerCase()).filter(Boolean));
+  const teams=(issue.teams||0)+reportTeams.size;
+  const sev=(STOP_PTS[issue.stops]||0)+(DATA_PTS[issue.data]||0);
+  const signal=sev+breadth(teams)+Math.min(boosts.length,3)+Math.min(recent.length,3);
+  return{boosts,reports,recent,teams,sev,signal,last:reports.map(r=>r.created).sort().pop()||""};
+}
+function sevChips(i){return[el("span",{class:"chip sev"+(i.stops==="prevented"||i.stops==="dropout"?" hi":""),text:STOPS[i.stops]||""}),el("span",{class:"chip sev"+(i.data==="wrong"||i.data==="unknown"?" hi":""),text:DATA[i.data]||""}),el("span",{class:"chip sev",text:COST[i.cost]||""})]}
+async function renderIssues(){
+  const list=$("#issue-list");
+  if(!store.db){list.replaceChildren(el("div",{class:"empty",text:"Sign in to see the issues."}));return}
+  if(!S.issues.length){list.replaceChildren(el("div",{class:"empty",text:"No issues yet. Use Report to add the first one."}));return}
+  const area=$("#f-area").value,q=$("#f-q").value.trim().toLowerCase(),sort=$("#f-sort").value;
+  const role=$("#f-role").value;
+  let rows=S.issues.map(i=>({i,s:stats(i)})).filter(({i,s})=>(!area||i.area===area)&&(!q||(i.title+" "+i.symptom).toLowerCase().includes(q))&&(!role||[...s.boosts,...s.reports].some(x=>(x.roles||[]).includes(role))));
+  rows.sort((a,b)=>sort==="teams"?b.s.teams-a.s.teams:sort==="boosts"?b.s.boosts.length-a.s.boosts.length:sort==="recent"?(b.s.last>a.s.last?1:-1):b.s.signal-a.s.signal);
+  const ids=[...new Set(S.boosts.map(b=>b.author).filter(Boolean))];
+  const ps=await store.names(ids);
+  const open=new Set($$("#issue-list details[open]").map(d=>d.dataset.id));
+  list.replaceChildren(...rows.map(({i,s})=>{
+    const mine=S.boosts.find(b=>b.issueId===i.id&&(b.authorKey===viewerKey()||(store.uid&&b.author===store.uid)));
+    const d=el("details",{class:"issue","data-id":i.id,open:open.has(i.id)});
+    d.append(el("summary",{},
+      el("h3",{text:i.title}),
+      el("div",{class:"side"},el("b",{text:s.teams}),s.teams===1?"team":"teams"),
+      el("div",{class:"meta"},el("span",{class:"chip status-"+i.status,text:STATUS[i.status]||i.status}),i.confirmed?el("span",{class:"chip stamp",text:"✓ Confirmed by platform team"}):null,el("span",{class:"chip",text:AREAS[i.area]||""}),...sevChips(i),s.boosts.length?el("span",{class:"chip",text:s.boosts.length+" boost"+(s.boosts.length>1?"s":"")}):null)));
+    const body=el("div",{class:"body"});
+    body.append(el("div",{},el("div",{class:"k",text:"What you see"}),el("p",{text:i.symptom})));
+    if(i.evidence)body.append(el("div",{},el("div",{class:"k",text:"How we know"}),el("p",{text:i.evidence})));
+    const w=(i.workarounds||[]),cw=(i.confirmedWorkarounds||[]);
+    const wl=[...w.map(x=>el("li",{},x,el("span",{class:"credit",text:" · from platform team records"}))),...cw.map(x=>el("li",{},x.text," ",el("span",{class:"chip stamp",text:"✓ Confirmed"}),el("span",{class:"credit",text:" · from "+(x.credit||"a team")})))];
+    body.append(el("div",{},el("div",{class:"k",text:"Workarounds"}),wl.length?el("ul",{class:"clean"},wl):el("p",{class:"hint",text:"None known. If you have one, add it in a report."})));
+    const tf={};s.reports.forEach(r=>{const t=(r.fix||"").trim();if(!t||/^not resolved$/i.test(t))return;const k=t.toLowerCase();(tf[k]=tf[k]||{text:t,studies:new Set()}).studies.add(r.study||"A team")});
+    const pending=Object.values(tf).filter(f=>!cw.some(c=>c.text.toLowerCase()===f.text.toLowerCase()));
+    if(pending.length)body.append(el("div",{},el("div",{class:"k",text:"Fixes teams reported"}),el("ul",{class:"clean"},pending.map(f=>{const credit=[...f.studies].join(", ");const li=el("li",{},f.text,el("span",{class:"credit",text:" · from "+credit+(f.studies.size>1?", used by "+f.studies.size+" teams":"")}));if(S.isOwner){const cb=el("button",{class:"mini",type:"button",text:"Confirm"});cb.addEventListener("click",async()=>{try{await store.patch("issues/"+i.id,{confirmedWorkarounds:[...cw,{text:f.text,credit}]});toast("Workaround confirmed")}catch(e){toast(writeError(e))}});li.append(" ",cb)}return li}))));
+    const studies=[...new Set(s.reports.map(r=>r.study).filter(Boolean))];
+    if(studies.length)body.append(el("p",{class:"credit",text:"Reported by: "+studies.join(", ")}));
+    if(i.harmful)body.append(el("div",{class:"harm",text:"Some of these workarounds have a cost. Read them before using them."}));
+    if(i.statusNote)body.append(el("div",{},el("div",{class:"k",text:"Status"}),el("p",{text:i.statusNote})));
+    if(s.boosts.length)body.append(el("div",{class:"boosts"},el("div",{class:"k",text:"Why teams boosted it"}),s.boosts.map(b=>el("div",{class:"boost"},el("b",{text:(b.author&&ps[b.author]?.name)||"A team"}),(b.roles||[]).length?" ("+rolesText(b.roles)+")":"",b.goal?" · threatens "+b.goal:"",b.why?": "+b.why:""))));
+    const goalSel=el("select",{id:"bg-"+i.id},el("option",{value:"",text:"Which study goal does it threaten?"}),GOALS.map(g=>el("option",{value:g,text:g})));
+    const why=el("input",{type:"text",id:"bw-"+i.id,maxlength:"300",placeholder:"Why it matters to your study"});
+    const bb=el("button",{class:"btn",type:"button",text:mine?"Update my boost":"Boost this issue"});
+    if(mine){goalSel.value=mine.goal||"";why.value=mine.why||""}
+    bb.addEventListener("click",async()=>{bb.disabled=true;try{await store.put("boosts/"+i.id+"__"+(store.uid||viewerKey()),{issueId:i.id,goal:goalSel.value,why:why.value.trim()});toast("Boost saved")}catch(e){toast(writeError(e))}bb.disabled=false});
+    const rb=el("button",{class:"btn ghost",type:"button",text:"Report it in my study"});
+    rb.addEventListener("click",()=>{prefillReport({issueId:i.id});showTab("report")});
+    body.append(el("div",{class:"bar"},goalSel,why,bb,rb));
+    if(S.isOwner){const cb=el("button",{class:"btn ghost",type:"button",text:i.confirmed?"Remove confirmed stamp":"Mark confirmed"});cb.addEventListener("click",async()=>{try{await store.patch("issues/"+i.id,{confirmed:!i.confirmed});toast(i.confirmed?"Stamp removed":"Marked confirmed")}catch(e){toast(writeError(e))}});body.append(el("div",{class:"bar"},el("span",{class:"hint",text:"Admin:"}),cb))}
+    d.append(body);return d;
+  }));
+}
+["#f-area","#f-sort","#f-role"].forEach(s=>$(s).addEventListener("change",renderIssues));$("#f-q").addEventListener("input",renderIssues);
+
+/* ---------- guide ---------- */
+const done=new Set();
+function guideSteps(){
+  const g=GUIDE[$("#g-symptom").value],os=$("#g-os").value,gps=$("#g-gps").checked,wear=$("#g-wear").checked,own=$("#g-own").checked;
+  return g.steps.filter(s=>(!s.os||os==="unknown"||s.os===os)&&(!s.gps||gps)&&(!s.wear||wear)&&(!s.own||own));
+}
+function renderGuide(){
+  const steps=guideSteps();
+  $("#g-steps").replaceChildren(...steps.map((s,ix)=>{
+    const key=$("#g-symptom").value+":"+s.t;
+    const fixed=done.has(key);
+    const b=el("button",{type:"button","aria-pressed":fixed?"true":"false",text:"This fixed it"});
+    b.addEventListener("click",()=>{done.has(key)?done.delete(key):done.add(key);renderGuide()});
+    return el("div",{class:"step"+(fixed?" done":"")},el("div",{class:"n",text:ix+1}),el("div",{},el("div",{text:s.t}),el("div",{class:"why",text:"Why: "+s.w}),el("div",{class:"acts"},b)));
+  }));
+  const fixes=steps.filter(s=>done.has($("#g-symptom").value+":"+s.t));
+  $("#g-summary").textContent=fixes.length?"Marked as fixed by: "+fixes.map(f=>f.t.split(/[.,]/)[0]).join("; "):"Nothing marked as fixed yet.";
+}
+$("#g-symptom").append(...Object.entries(GUIDE).map(([k,v])=>el("option",{value:k,text:v.label})));
+["#g-symptom","#g-os","#g-gps","#g-wear","#g-own"].forEach(s=>$(s).addEventListener("change",renderGuide));
+$("#g-log").addEventListener("click",()=>{
+  const key=$("#g-symptom").value,g=GUIDE[key];
+  const fixes=guideSteps().filter(s=>done.has(key+":"+s.t)).map(s=>s.t.split(/[.,]/)[0]);
+  prefillReport({issueId:g.issue,fix:fixes.join("; ")||"Not resolved",os:$("#g-os").value==="unknown"?"unsure":$("#g-os").value,deploy:$("#g-own").checked?"other":""});
+  showTab("report");
+});
+
+/* ---------- report ---------- */
+function buildReportForm(){
+  $("#r-setup").replaceChildren(...SETUP.map(f=>el("label",{class:"field"},el("span",{text:f.label}),f.type==="select"?el("select",{id:"rs-"+f.id},f.opts.map(([v,t])=>el("option",{value:v,text:t}))):el("input",{type:"text",id:"rs-"+f.id,maxlength:"80",placeholder:f.ph||""}))));
+  $("#r-setup-note").textContent=SETUP_NOTE;
+  $("#r-attr").replaceChildren(...ATTR.map(([v,t],ix)=>el("label",{},el("input",{type:"radio",name:"r-attr",value:v,id:"ra-"+v,checked:ix===4}),t)));
+  $("#r-week").value=new Date().toISOString().slice(0,10);
+}
+function fillIssueSelect(){
+  const cur=$("#r-issue").value;
+  $("#r-issue").replaceChildren(el("option",{value:"",text:"Choose an issue"}),...S.issues.map(i=>el("option",{value:i.id,text:i.title})),el("option",{value:"new",text:"Something new"}));
+  if(cur)$("#r-issue").value=cur;
+  const pc=[...$("#p-issues").selectedOptions].map(o=>o.value);
+  $("#p-issues").replaceChildren(...S.issues.map(i=>el("option",{value:i.id,text:i.title,selected:pc.includes(i.id)})));
+}
+function prefillReport(p){
+  if(p.issueId)$("#r-issue").value=p.issueId;
+  $("#r-new").hidden=$("#r-issue").value!=="new";
+  if(p.fix)$("#r-fix").value=p.fix;
+  if(p.os)$("#rs-os").value=p.os;
+  if(p.deploy)$("#rs-deploy").value=p.deploy;
+}
+$("#r-issue").addEventListener("change",()=>{$("#r-new").hidden=$("#r-issue").value!=="new"});
+$("#r-form").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const issueId=$("#r-issue").value;
+  if(!issueId){$("#r-status").textContent="Choose an issue first.";return}
+  if(issueId==="new"&&!$("#r-title").value.trim()){$("#r-status").textContent="Give the new issue a short title.";return}
+  const setup={};SETUP.forEach(f=>setup[f.id]=$("#rs-"+f.id).value.trim());
+  const rec={issueId,newTitle:issueId==="new"?$("#r-title").value.trim():"",newSymptom:issueId==="new"?$("#r-symptom").value.trim():"",study:$("#r-study").value.trim(),week:$("#r-week").value,span:$("#r-span").value,n:Number($("#r-n").value)||0,recur:$("#r-recur").value,setup,attribution:($("input[name=r-attr]:checked")||{}).value||"unsure",stops:$("#r-stops").value,data:$("#r-data").value,cost:$("#r-cost").value,mechanism:$("#r-mech").value,words:$("#r-words").value.trim(),fix:$("#r-fix").value.trim()};
+  $("#r-submit").disabled=true;
+  try{await store.add("reports",rec);$("#r-status").textContent="Report submitted. Thank you.";toast("Report submitted");["#r-title","#r-symptom","#r-n","#r-words","#r-fix"].forEach(s=>$(s).value="")}catch(err){$("#r-status").textContent=writeError(err)}
+  $("#r-submit").disabled=false;
+});
+
+/* ---------- study ---------- */
+function rankSelects(host,prefix){host.replaceChildren(...[1,2,3].map(n=>el("label",{class:"field"},el("span",{class:"hint",text:n===1?"Most important":n===2?"Second":"Third"}),el("select",{id:prefix+n},el("option",{value:"",text:"Choose a goal"}),GOALS.map(g=>el("option",{value:g,text:g}))))))}
+rankSelects($("#s-rank-r"),"sr");rankSelects($("#s-rank-p"),"sp");
+$("#s-form").addEventListener("submit",async e=>{
+  e.preventDefault();const name=$("#s-name").value.trim();if(!name){$("#s-status").textContent="Add a study name.";return}
+  const r=[1,2,3].map(n=>$("#sr"+n).value).filter(Boolean),p=[1,2,3].map(n=>$("#sp"+n).value).filter(Boolean);
+  try{await store.put("studies/"+name.toLowerCase().replace(/[^a-z0-9]+/g,"-").slice(0,60),{name,deploy:$("#s-deploy").value,researcherGoals:r,participantGoals:p});$("#s-status").textContent="Saved.";toast("Study goals saved")}catch(err){$("#s-status").textContent=writeError(err)}
+});
+function renderStudies(){
+  const host=$("#s-list");
+  if(!S.studies.length){host.replaceChildren(el("p",{class:"hint",text:"No studies have ranked their goals yet."}));return}
+  host.replaceChildren(el("table",{},el("thead",{},el("tr",{},["Study","Researchers rank","Participants rank"].map(h=>el("th",{text:h})))),el("tbody",{},S.studies.map(s=>el("tr",{},el("td",{text:s.name}),el("td",{text:(s.researcherGoals||[]).join(" › ")||"·"}),el("td",{text:(s.participantGoals||[]).join(" › ")||"·"}))))));
+}
+
+/* ---------- dev ---------- */
+async function renderDev(){
+  const tb=$("#d-table tbody");
+  const rows=S.issues.map(i=>({i,s:stats(i)})).sort((a,b)=>b.s.signal-a.s.signal);
+  tb.replaceChildren(...rows.map(({i,s})=>{
+    let statusCell;
+    if(S.isOwner){statusCell=el("select",{"aria-label":"Status for "+i.title},Object.entries(STATUS).map(([v,t])=>el("option",{value:v,text:t,selected:v===i.status})));statusCell.addEventListener("change",async()=>{try{await store.patch("issues/"+i.id,{status:statusCell.value});toast("Status updated")}catch(e){toast(writeError(e))}})}
+    else statusCell=el("span",{class:"chip status-"+i.status,text:STATUS[i.status]||i.status});
+    return el("tr",{},el("td",{text:i.title}),el("td",{},statusCell),el("td",{class:"num",text:s.teams}),el("td",{class:"num",text:s.sev+" / 6"}),el("td",{class:"num",text:s.boosts.length}),el("td",{class:"num",text:s.reports.length}),el("td",{class:"num"},el("b",{text:s.signal})));
+  }));
+  const newOnes=S.reports.filter(r=>r.issueId==="new");
+  if(newOnes.length)tb.append(...newOnes.map(r=>el("tr",{},el("td",{text:"New: "+r.newTitle}),el("td",{},el("span",{class:"chip status-heard",text:"Heard"})),el("td",{class:"num",text:1}),el("td",{class:"num",text:(STOP_PTS[r.stops]||0)+(DATA_PTS[r.data]||0)+" / 6"}),el("td",{class:"num",text:0}),el("td",{class:"num",text:1}),el("td",{class:"num",text:"·"}))));
+  const ph=$("#p-list");
+  if(!S.proposals.length){ph.replaceChildren(el("p",{class:"hint",text:"No proposals yet."}));return}
+  const DEC={go:"Go",conditions:"Go with conditions",scope:"Needs scoping","not-now":"Not now"};
+  ph.replaceChildren(el("table",{},el("thead",{},el("tr",{},["What","Helps","Zone","Size","Owner","Decision"].map(h=>el("th",{text:h})))),el("tbody",{},S.proposals.slice().sort((a,b)=>a.created<b.created?1:-1).map(p=>el("tr",{},el("td",{text:p.what+(p.by?" ("+p.by+")":"")}),el("td",{text:(p.issues||[]).map(id=>S.issues.find(i=>i.id===id)?.title||id).join("; ")||"Contributor need"}),el("td",{text:p.zone||""}),el("td",{text:p.size}),el("td",{text:p.owner||""}),el("td",{text:(DEC[p.decision]||"")+(p.reason?": "+p.reason:"")}))))));
+}
+$("#p-zone").replaceChildren(...ZONES.map(([v,t,z])=>el("label",{},el("input",{type:"checkbox",value:v,"data-zone":z,id:"pz-"+v}),t)));
+function zoneOf(){const z=$$("#p-zone input:checked").map(c=>c.dataset.zone);return z.includes("red")?"red":z.includes("yellow")?"yellow":z.length?"green":""}
+$("#p-zone").addEventListener("change",()=>{const z=zoneOf();$("#p-zone-out").textContent=z?ZONE_TEXT[z]:""});
+$("#p-form").addEventListener("submit",async e=>{
+  e.preventDefault();if(!$("#p-what").value.trim()){$("#p-status").textContent="Describe the idea first.";return}
+  const rec={what:$("#p-what").value.trim(),by:$("#p-by").value.trim(),issues:[...$("#p-issues").selectedOptions].map(o=>o.value),touches:$$("#p-zone input:checked").map(c=>c.value),zone:zoneOf(),reach:$("#p-reach").value.trim(),effects:$("#p-effects").value.trim(),reversible:$("#p-rev").value,test:$("#p-test").value.trim(),size:$("#p-size").value,owner:$("#p-owner").value.trim(),decision:$("#p-dec").value,reason:$("#p-reason").value.trim()};
+  if(rec.decision==="not-now"&&!rec.reason){$("#p-status").textContent="A 'Not now' decision needs a reason.";return}
+  try{await store.add("proposals",rec);$("#p-status").textContent="Proposal saved.";toast("Proposal saved");$("#p-form").reset();$("#p-zone-out").textContent=""}catch(err){$("#p-status").textContent=writeError(err)}
+});
+
+/* ---------- about ---------- */
+$("#a-ladder").replaceChildren(...Object.entries(STATUS).map(([v,t])=>el("span",{class:"chip status-"+v,text:t})));
+$("#fb-form").addEventListener("submit",async e=>{
+  e.preventDefault();const t=$("#fb-text").value.trim();if(!t){$("#fb-status").textContent="Write a comment first.";return}
+  try{await store.add("feedback",{part:$("#fb-part").value,text:t});$("#fb-status").textContent="Thanks, feedback sent.";$("#fb-text").value=""}catch(err){$("#fb-status").textContent=writeError(err)}
+});
+
+/* ---------- boot ---------- */
+buildReportForm();renderGuide();renderStudies();
+$("#f-role").append(...ROLES.map(([v,t])=>el("option",{value:v,text:t})));
+const lastTab=(location.hash||"").slice(1)||storageGet("ip-tab");if(lastTab&&GUIDE&&document.getElementById("v-"+lastTab))showTab(lastTab);
+(async()=>{
+  await store.init();
+  if(!store.db){
+    $("#auth").hidden=false;$("nav.tabs").hidden=true;$$("section.view").forEach(v=>v.hidden=true);
+    $("#auth").addEventListener("submit",async e=>{e.preventDefault();if(!sb){$("#auth-status").textContent="Couldn't reach the sign-in service.";return}
+      $("#auth-status").textContent="Signing in…";
+      const {error}=await sb.auth.signInWithPassword({email:$("#auth-email").value.trim(),password:$("#auth-pass").value});
+      if(error){$("#auth-status").textContent="That email and password didn't match. Check them, or ask Eden to reset your password.";return}
+      location.reload()});
+    return;
+  }
+  try{const {data}=await sb.rpc("is_admin");S.isOwner=!!data}catch(e){}
+  $("#who").hidden=false;$("#roles").hidden=false;
+  $("#whoami").textContent="Signed in as "+store.email+(S.isOwner?" (admin)":"");
+  $("#me-name").value=store.profile.name||"";
+  $("#me-name").addEventListener("change",()=>store.saveProfile({name:$("#me-name").value.trim()}));
+  $("#signout").addEventListener("click",async()=>{await sb.auth.signOut();location.reload()});
+  $("#roles").append(...ROLES.map(([v,t])=>{const c=el("input",{type:"checkbox",id:"role-"+v,value:v,checked:myRoles().includes(v)});c.addEventListener("change",()=>store.saveProfile({roles:$$("#roles input:checked").map(x=>x.value)}));return el("label",{},c,t)}));
+  if(!store.profile.name)toast("Add your name at the top so your boosts are credited.");
+  renderIssues();
+  const rerender=()=>{renderIssues();renderDev();renderStudies()};
+  store.watch("issues",d=>{S.issues=d;fillIssueSelect();rerender()});
+  store.watch("boosts",d=>{S.boosts=d;rerender()});
+  store.watch("reports",d=>{S.reports=d;rerender()});
+  store.watch("studies",d=>{S.studies=d;renderStudies()});
+  store.watch("proposals",d=>{S.proposals=d;renderDev()});
+})();
+</script>
+</body>
+</html>
