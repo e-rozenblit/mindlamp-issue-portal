@@ -468,6 +468,8 @@
       onPick: id => pickEntry(id)
     });
     V.pick = el("div", { class: "panel g-pick" }, el("h3", { text: "2. The problem" }), V.picker);
+    /* Picking a problem before the phone type asks for the phone right here, where the person is looking. */
+    V.phoneAsk = el("div", { class: "panel g-phone-ask", hidden: true, role: "group", "aria-labelledby": "g-phone-ask-q" });
 
     /* 3. The run. Run mode (audit item 3): only the status line sits above the step, so the question and its
        answers fit on screen during a call. Earlier answers go below the step. */
@@ -490,7 +492,7 @@
     /* Follow-up later (D24): the person's open sessions, and one session opened to record what happened. */
     V.openList = el("div", { class: "panel g-open", hidden: true });
     V.follow = el("div", { class: "g-follow", hidden: true });
-    sec.replaceChildren(V.head, V.sample, V.testNote, V.follow, V.openList, V.start, V.pick, V.run);
+    sec.replaceChildren(V.head, V.sample, V.testNote, V.follow, V.openList, V.start, V.pick, V.phoneAsk, V.run);
 
     try {
       mq = window.matchMedia("(min-width: 900px)");
@@ -525,14 +527,26 @@
     run.phone = id;
     saveRun();
     V.phoneMsg.textContent = "";
+    if (V.phoneAsk) V.phoneAsk.hidden = true;
     refreshStart();
     if (pendingEntry) startEntry(pendingEntry);
   }
   function pickEntry(id) {
     if (!run.phone) {
       pendingEntry = id;
+      const { el } = P.ui;
+      const e = entryById(id);
       V.phoneMsg.textContent = "Pick the phone type to start.";
-      try { V.start.scrollIntoView({ block: "start" }); V.phoneBtns[0].focus({ preventScroll: true }); } catch (e) { /* ignore */ }
+      V.phoneAsk.replaceChildren(
+        el("h3", { id: "g-phone-ask-q", text: "Which phone does the participant use?" }),
+        e && e.title ? el("p", { class: "hint", text: e.title }) : null,
+        el("div", { class: "g-phones" }, P.C.PHONES.map(([pid, label]) => {
+          const b = el("button", { type: "button", class: "g-phone", text: label });
+          b.addEventListener("click", () => pickPhone(pid));
+          return b;
+        })));
+      V.phoneAsk.hidden = false;
+      try { V.phoneAsk.scrollIntoView({ block: "center" }); V.phoneAsk.querySelector("button").focus({ preventScroll: true }); } catch (err) { /* ignore */ }
       return;
     }
     startEntry(id);
@@ -547,6 +561,7 @@
     if (partway) await saveEarly();
     clearRun();
     pendingEntry = "";
+    if (V.phoneAsk) V.phoneAsk.hidden = true;
     V.issueBox = null; V.saveLine = null; V.sendBtns = [];
     V.step.replaceChildren(); V.trail.replaceChildren(); V.map.replaceChildren();
     V.picker.clear();
