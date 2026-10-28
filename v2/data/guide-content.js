@@ -34,11 +34,11 @@ window.GUIDE_CONTENT = {
       text: "Set a phone alarm or calendar reminder at the activity time.",
       why: "It keeps them on schedule until activity reminders work again.",
       basis: ["staff", "platform"],
-      workaroundFor: ["i03"]
+      workaroundFor: ["i03", "i04"]
     },
     web: {
       short: "Use the web version", who: "participant-later",
-      text: "Do the activity on the web at dashboard.lamp.digital (or your own server's dashboard address), on a phone browser or a computer. They sign in with their study login.",
+      text: "Do the activity on the web at dashboard.lamp.digital, or your study's own web address if it has one, on a phone browser or a computer. They sign in with their study login.",
       why: "Activities done on the web are saved. Phone data and activity reminders don't work there.",
       basis: ["documented", "platform"],
       workaroundFor: ["i01", "i05", "i21"]
@@ -51,7 +51,7 @@ window.GUIDE_CONTENT = {
       workaroundFor: ["i13"]
     },
     one_counts: {
-      short: "Once is enough", who: "staff-now",
+      short: "Tell them once counts", who: "staff-now",
       text: "Tell the person that doing the activity once counts.",
       why: "Extra activity reminders can make people think they must do it again.",
       basis: ["staff"],
@@ -107,7 +107,7 @@ window.GUIDE_CONTENT = {
     },
     {
       id: "not_done", order: 4, group: "participant",
-      title: "Activity done but not showing",
+      title: "Activity not showing as done",
       description: "No checkmark, streak reset, lost answers, or it won't submit.",
       phrases: ["did the survey but it's not there", "submitted but nothing on dashboard", "streak reset", "no checkmark",
         "says i didn't do it", "lost my answers", "had to start over", "game results missing", "won't submit",
@@ -263,56 +263,56 @@ window.GUIDE_CONTENT = {
     "load.network": {
       kind: "action", stage: 3, short: "Switch networks", who: "participant-now",
       text: "Have them switch networks: from Wi-Fi to mobile data, or the other way.",
-      why: "Some workplace or hospital Wi-Fi blocks the app, and a slow network can cause endless loading.",
+      why: "Workplace or hospital Wi-Fi can block the app, and a slow network can cause endless loading.",
       basis: ["documented", "staff"],
       notFixedNext: "load.forcequit", fixedNext: "load.confirm"
     },
     "load.forcequit": {
       kind: "action", stage: 3, short: "Swipe away and reopen", who: "participant-now",
       text: "Have them close mindLAMP fully (swipe it away), then open it again.",
-      why: "Swiping the app away resets it and deletes no data. Phone data collection stops until they open it again.",
+      why: "Swiping the app away resets it and deletes no data. Phone data collection can stop until they reopen it.",
       basis: ["platform", "code"],
       notFixedNext: "load.restart", fixedNext: "load.confirm"
     },
     "load.restart": {
       kind: "action", stage: 3, short: "Restart the phone", who: "participant-now",
       text: "Have them restart the phone, then open mindLAMP.",
-      why: "A restart clears many stuck-app problems. Open mindLAMP afterward: phone data collection may not start again until the app is opened.",
+      why: "A restart can clear a stuck app. Phone data collection may not start again until mindLAMP is opened.",
       basis: ["common", "staff"],
       notFixedNext: "load.upload", fixedNext: "load.confirm"
     },
     "load.cache": {
-      kind: "action", stage: 3, short: "Clear the app cache", who: "participant-later",
+      kind: "action", stage: 3, short: "Clear the app cache", who: "participant-now",
       text: "Android: in Settings, open Apps, then mindLAMP, then Storage. Tap Clear cache only.",
       why: "Clearing the cache can fix a stuck app on Android. Data already uploaded is safe.",
       basis: ["documented", "platform"],
-      caution: "Tap Clear cache only. Clear storage (or Clear data) resets the app like a reinstall. The effect of Clear cache on data not yet uploaded is unknown.",
+      caution: "Tap Clear cache only. Clear storage (or Clear data) signs them out and deletes data not yet uploaded. The effect of Clear cache on unsent data is unknown.",
       when: { os: "android" }, skip: "load.reinstall",
       notFixedNext: "load.reinstall", fixedNext: "load.confirm"
     },
     "load.upload": {
       kind: "action", stage: 3, short: "Let data upload first", who: "participant-later",
       text: "Have them open mindLAMP on Wi-Fi, with the phone charged, and leave it open for a few minutes.",
-      why: "Data the phone hasn't sent yet uploads once the app is open, connected and charged. On Android, uploads stop at 15% battery or lower. Do this before clearing the cache or reinstalling, which can delete it.",
+      why: "Data not yet sent can upload while the app is open and connected. On Android, nothing uploads at 15% battery or lower. Do this before reinstalling, which deletes unsent data, and before clearing the cache, whose effect on it is unknown.",
       basis: ["documented", "code"],
       workaroundFor: ["i02"],
       notFixedNext: "load.cache", fixedNext: "load.confirm"
     },
     "load.reinstall": {
-      kind: "action", stage: 3, short: "Reinstall the app", who: "participant-later",
-      text: "Have them delete mindLAMP, install it again, sign in, and turn each permission back on in Settings.",
-      why: "Reinstalling sometimes clears a problem nothing else fixes, but not always. It takes time, their login and sometimes their app store password. If that is too much right now, the web version keeps activities going.",
+      kind: "action", stage: 3, short: "Reinstall the app", who: "participant-now",
+      text: "Have them delete mindLAMP, install it again, sign in, and turn each permission back on in Settings. If that is too much for them now, they can do activities on the web meanwhile.",
+      why: "Reinstalling sometimes clears a problem nothing else fixes, but not always. It takes time, their login details and sometimes their app store password.",
       basis: ["documented", "staff", "platform"],
-      caution: "Try the other fixes first, and let their data upload before this. Reinstalling also turns every permission off. The platform team hasn't yet confirmed it as a recommended fix.",
+      caution: "Try the other fixes first, and let data upload before this. Reinstalling resets permissions. It isn't confirmed yet as a recommended fix.",
       dataRisk: true, lastResort: true,
       notFixedNext: "load.notfixed", fixedNext: "load.confirm"
     },
     "load.confirm": {
-      kind: "question", stage: 4, short: "Activity shows on dashboard?",
-      text: "Have them open the app and do the activity that failed, or any short activity. Does it show on your dashboard?",
+      kind: "question", stage: 4, short: "Activity reaches dashboard?",
+      text: "Have them open the app and do the activity that failed (any short activity they already have, if the whole app failed). Does it show on your dashboard?",
       why: "The problem is fixed only when the thing that failed works again.",
       basis: ["platform"],
-      checkLater: "Have them open the app and do the activity that failed, or any short activity. Check that it shows on your dashboard.",
+      checkLater: "Have them open the app and do the activity that failed (any short activity they already have, if the whole app failed). Check that it shows on your dashboard.",
       options: [
         { label: "Yes, it shows", next: "load.fixed" },
         { label: "No, same problem", next: "load.notfixed" },
@@ -326,7 +326,7 @@ window.GUIDE_CONTENT = {
     },
     "load.notfixed": {
       kind: "end", ending: "not_fixed",
-      text: "Start a new session each time this happens. The app keeps no error details, so these sessions are the only record the platform team has.",
+      text: "If it happens again, start a new session each time. The app reports no errors on its own, so sessions show the platform team how often this happens.",
       stopgaps: ["web"],
       collect: ["A screenshot or screen recording", "Where it happened: opening the app, a tab, a game, or after sending",
         "Every time, or once", "The network: home, work, hospital, or abroad", "Whether it is a new install",
@@ -399,7 +399,7 @@ window.GUIDE_CONTENT = {
     "login.server": {
       kind: "action", stage: 3, short: "Check the server", who: "participant-now",
       text: "Check they picked your study's server on the login screen.",
-      why: "If your study runs its own server, the app must point to it. The wrong server rejects correct login details.",
+      why: "The app must point to your study's server. The wrong one rejects correct login details.",
       basis: ["documented", "staff"],
       notFixedNext: "login.cred", fixedNext: "login.perms"
     },
@@ -429,21 +429,14 @@ window.GUIDE_CONTENT = {
       text: "Check the app store. If mindLAMP shows an update, install it.",
       why: "An out-of-date app can fail to sign in.",
       basis: ["common", "platform"],
-      notFixedNext: "login.upload", fixedNext: "login.perms"
-    },
-    "login.upload": {
-      kind: "action", stage: 3, short: "Let data upload first", who: "participant-later",
-      text: "If they can still open the app, have them open it on Wi-Fi, with the phone charged, and leave it open for a few minutes.",
-      why: "Data the phone hasn't sent yet uploads once the app is open and connected. Do this before reinstalling, which deletes it.",
-      basis: ["documented", "code"],
       notFixedNext: "login.reinstall", fixedNext: "login.perms"
     },
     "login.reinstall": {
-      kind: "action", stage: 3, short: "Reinstall the app", who: "participant-later",
+      kind: "action", stage: 3, short: "Reinstall the app", who: "participant-now",
       text: "Only if the app is an old version that won't update or won't open: have them delete mindLAMP, install it again, and sign in.",
       why: "Reinstalling replaces an old or broken copy of the app with the current one.",
       basis: ["staff", "documented"],
-      caution: "Try Update the app first. Reinstalling also turns every permission off. The platform team hasn't yet confirmed it as a recommended fix.",
+      caution: "Try updating the app first. Reinstalling resets permissions. It isn't confirmed yet as a recommended fix.",
       dataRisk: true, lastResort: true,
       notFixedNext: "login.notfixed", fixedNext: "login.perms"
     },
@@ -473,7 +466,7 @@ window.GUIDE_CONTENT = {
     },
     "login.recur": {
       kind: "end", ending: "no_fix_yet", issueId: "i01",
-      text: "Repeated logouts are a known problem that staff can't fix yet. Help them sign in each time. Activity reminders and phone data stop from each logout until they sign in again. If signing in again and again is wearing them down, tell your study lead.",
+      text: "Repeated logouts are a known problem. Help them sign in each time. Activity reminders and phone data stop from each logout until they sign in again. If signing in each time is wearing them down, they can do activities on the web instead. Phone data stays off until they sign in to the app.",
       stopgaps: ["web"]
     },
     "login.delacct": {
@@ -533,7 +526,7 @@ window.GUIDE_CONTENT = {
       otherNext: "rem.loggedin"
     },
     "rem.gateway": {
-      kind: "action", stage: 3, short: "Check server reminder setup", who: "platform",
+      kind: "action", stage: 3, short: "Check server reminder setup", who: "staff-now",
       text: "Ask whoever runs your server to check that activity reminders are set up to reach phones.",
       why: "On your own server, activity reminders need extra server setup to reach phones.",
       basis: ["documented"],
@@ -542,7 +535,7 @@ window.GUIDE_CONTENT = {
     },
     "rem.all": {
       kind: "end", ending: "not_fixed",
-      text: "When no one gets activity reminders, the cause is likely the study's setup or the server, not the phones. Give participants a backup reminder meanwhile.",
+      text: "When no one gets activity reminders, the cause is likely the study's setup or the server, not the phones.",
       stopgaps: ["alarm"],
       collect: ["When activity reminders stopped", "Which activities", "Any recent change to activities or schedules", "Your server"]
     },
@@ -561,7 +554,7 @@ window.GUIDE_CONTENT = {
     "rem.update": {
       kind: "info", stage: 2, short: "Android: phone updated?",
       text: "Android: ask whether the phone updated recently, and add it as a note.",
-      why: "Activity reminders can stop after an Android update. Note whether it updated: it helps find the cause.",
+      why: "Activity reminders can stop after an Android update, so a recent update is a clue to the cause.",
       basis: ["platform"],
       when: { os: "android" }, skip: "rem.notif",
       next: "rem.notif"
@@ -589,7 +582,7 @@ window.GUIDE_CONTENT = {
     },
     "rem.battery": {
       kind: "action", stage: 3, short: "Turn off battery limits", who: "participant-now",
-      text: "Android: turn off Battery Saver. Set mindLAMP's battery use to Unrestricted or Don't optimize. This uses more battery: if battery life already worries them, leave Battery Saver on and set a phone alarm for activity times instead.",
+      text: "Android: turn off Battery Saver. Set mindLAMP's battery use to Unrestricted or Don't optimize. This uses more battery. If battery worries might make them leave the study, leave Battery Saver on and set a phone alarm for activity times instead. Expect gaps in phone data.",
       why: "Android can hold back apps to save battery. That delays or drops activity reminders.",
       basis: ["documented", "staff"],
       when: { os: "android" }, skip: "rem.connect",
@@ -635,7 +628,7 @@ window.GUIDE_CONTENT = {
     },
     "rem.notfixed": {
       kind: "end", ending: "not_fixed",
-      text: "Give the person a backup in the meantime.",
+      text: "",
       stopgaps: ["alarm", "unhide"],
       collect: ["Which pattern: none, silent, wrong time, or repeating",
         "Times expected and times received (a screenshot of a notification helps)", "Phone maker and OS version",
@@ -644,7 +637,7 @@ window.GUIDE_CONTENT = {
     },
     "rem.wrongtime": {
       kind: "end", ending: "not_fixed", issueId: "i04",
-      text: "Wrong times can follow travel, a clock change, a phone update, or a change to the activity's schedule. Note the times expected and received, and what changed.",
+      text: "Wrong times can follow travel, a clock change, a phone update, or a change to the activity's schedule.",
       collect: ["Times expected and times received (a screenshot of a notification helps)",
         "Whether the phone updated just before", "Whether they traveled, or the clocks changed (time zone or daylight saving)",
         "Everyone in the study, or one person", "Phone maker and OS version", "Your server"],
@@ -652,16 +645,16 @@ window.GUIDE_CONTENT = {
     },
     "rem.timing": {
       kind: "end", ending: "no_fix_yet", issueId: "i04",
-      text: "Repeated or double activity reminders are a known problem that staff can't fix yet.",
+      text: "",
       stopgaps: ["one_counts"]
     },
     "rem.badge": {
       kind: "end", ending: "no_fix_yet", issueId: "i06",
-      text: "This is a known problem. Check the dashboard. If the activity shows there, it is done, and they can ignore the number."
+      text: "Check the dashboard. If the activity shows there, it is done, and they can ignore the number."
     },
     "rem.tap": {
       kind: "end", ending: "new_problem", issueId: null,
-      text: "Tapping an activity reminder can open a blank or wrong page. The platform team knows about it. Note what opens below.",
+      text: "Tapping an activity reminder can open a blank or wrong page. Describe what opens below.",
       stopgaps: ["unhide"]
     },
 
@@ -694,7 +687,7 @@ window.GUIDE_CONTENT = {
     "done.reassure": {
       kind: "action", stage: 3, short: "Tell them it counted", who: "staff-now",
       text: "Tell them it was saved, even if the phone doesn't show it.",
-      why: "The checkmark or streak on the phone can be wrong even when the activity was saved.",
+      why: "The dashboard is the study's record, and it shows the activity.",
       basis: ["staff"],
       notFixedNext: "done.notfixed"
     },
@@ -714,7 +707,7 @@ window.GUIDE_CONTENT = {
     "done.when": {
       kind: "question", stage: 2, short: "When and where?",
       text: "When and where did they do it?",
-      why: "After midnight, it counts toward the next day. Offline, answers wait on the phone. On another device, they don't reach this person's record.",
+      why: "After midnight, it counts toward the next day. Offline, answers wait on the phone until it connects. In Self Help or under another login, answers don't reach this person's record.",
       basis: ["documented", "staff"],
       options: [
         { label: "After midnight", next: "done.midnight", issueId: null },
@@ -741,7 +734,7 @@ window.GUIDE_CONTENT = {
     "done.device": {
       kind: "action", stage: 3, short: "Use the study phone", who: "participant-now",
       text: "Have them use the app on their study phone, signed in with their study login.",
-      why: "Answers given on another device or in Self Help don't reach this person's record.",
+      why: "Answers given in Self Help, or under another login, don't reach this person's record.",
       basis: ["platform", "staff"],
       notFixedNext: "done.submit", fixedNext: "done.confirm"
     },
@@ -755,7 +748,7 @@ window.GUIDE_CONTENT = {
     "done.submit": {
       kind: "action", stage: 3, short: "Show how to submit", who: "participant-now",
       text: "Show them how to tap Submit and wait for the confirmation screen.",
-      why: "Answers are sent only after Submit. Leaving before the confirmation screen can lose them.",
+      why: "Answers are sent only after they tap Submit. The confirmation screen shows they went through.",
       basis: ["staff"],
       notFixedNext: "done.wifi", fixedNext: "done.confirm"
     },
@@ -776,7 +769,7 @@ window.GUIDE_CONTENT = {
     "done.idmap": {
       kind: "action", stage: 2, short: "Check study ID records", who: "staff-now",
       text: "Check that the mindLAMP ID in your study records matches the account in the dashboard. Check your report ran.",
-      why: "Data missing from a study report may be in mindLAMP all along, under an ID your records have wrong, or the report may not have run.",
+      why: "Data missing from a study report may be in mindLAMP under an ID your records have wrong, or the report may not have run.",
       basis: ["staff"],
       notFixedNext: "done.lastscreen"
     },
@@ -785,7 +778,7 @@ window.GUIDE_CONTENT = {
       text: "Does the activity now show on your dashboard?",
       why: "Activities appear on the dashboard within minutes of being sent. Check there, not only on the phone.",
       basis: ["platform"],
-      checkLater: "Check that the entry shows on your dashboard.",
+      checkLater: "Check that the activity shows on your dashboard.",
       options: [
         { label: "Yes", next: "done.fixed" },
         { label: "No", next: "done.notfixed" },
@@ -814,7 +807,7 @@ window.GUIDE_CONTENT = {
         { label: "Nothing. They missed or dismissed the reminder", next: "find.reminderonly" },
         { label: "The card is there but won't open", next: "find.window" },
         { label: "The Feed or a tab is empty", next: "find.schedule" },
-        { label: "A new or changed activity isn't there", next: "find.refresh" }
+        { label: "A new or changed activity isn't there", next: "find.schedule" }
       ],
       otherNext: "find.window"
     },
@@ -858,37 +851,37 @@ window.GUIDE_CONTENT = {
     "find.explain": {
       kind: "action", stage: 3, short: "Explain when it opens", who: "staff-now",
       text: "Explain when the activity opens and closes. Have them try again inside that time.",
-      why: "Activities open only inside their time window, and people often try too early or too late.",
+      why: "Feed cards open only inside their time window, and people often try too early or too late.",
       basis: ["documented", "staff"],
       notFixedNext: "find.refresh", fixedNext: "find.confirm"
     },
     "find.schedule": {
       kind: "action", stage: 3, short: "Check schedule and group", who: "staff-now",
       text: "In the dashboard, check the activity has a schedule and is in this person's group. Clear any filters.",
-      why: "An empty Feed often means no schedule, the wrong group, or a staff filter hiding activities.",
+      why: "A missing activity often has no schedule or isn't in their group. A dashboard filter can hide activities from your view while you check.",
       basis: ["documented", "platform"],
       notFixedNext: "find.refresh", fixedNext: "find.confirm"
     },
     "find.refresh": {
       kind: "action", stage: 3, short: "Swipe away and reopen", who: "participant-now",
       text: "Have them close mindLAMP fully (swipe it away), then open it again.",
-      why: "Swiping the app away and reopening it deletes no data. Phone data collection stops until they open it again.",
+      why: "Swiping the app away and reopening it deletes no data. Phone data collection can stop until they reopen it.",
       basis: ["code"],
       notFixedNext: "find.upload", fixedNext: "find.confirm"
     },
     "find.upload": {
       kind: "action", stage: 3, short: "Let data upload first", who: "participant-later",
       text: "Have them open mindLAMP on Wi-Fi, with the phone charged, and leave it open for a few minutes.",
-      why: "Data the phone hasn't sent yet uploads once the app is open, connected and charged. On Android, uploads stop at 15% battery or lower. Do this before signing out, which deletes it.",
+      why: "Data not yet sent can upload while the app is open and connected. On Android, nothing uploads at 15% battery or lower. Do this before signing out, which deletes unsent data.",
       basis: ["documented", "code"],
       notFixedNext: "find.signout", fixedNext: "find.confirm"
     },
     "find.signout": {
-      kind: "action", stage: 3, short: "Sign out and in", who: "participant-later",
+      kind: "action", stage: 3, short: "Sign out and in", who: "participant-now",
       text: "Have them sign out of mindLAMP, then sign back in. If they only need this one activity, doing it on the web avoids signing out.",
       why: "New or changed activities sometimes appear only after signing out and back in.",
       basis: ["platform", "documented"],
-      caution: "Try the other fixes first, and let their data upload before this. The platform team hasn't yet confirmed signing out as a recommended fix.",
+      caution: "Try the other fixes first, and let data upload before this. Signing out isn't confirmed yet as a recommended fix.",
       dataRisk: true, lastResort: true,
       notFixedNext: "find.notfixed", fixedNext: "find.confirm"
     },
@@ -911,7 +904,7 @@ window.GUIDE_CONTENT = {
     },
     "find.notfixed": {
       kind: "end", ending: "not_fixed",
-      text: "If the activity is assigned and inside its time but still won't open, the platform team needs to look.",
+      text: "",
       stopgaps: ["web"],
       collect: ["The activity name", "Where they looked", "What time they tried", "A screenshot",
         "Whether the activity is hidden from tabs"]
@@ -921,7 +914,7 @@ window.GUIDE_CONTENT = {
     "act.what": {
       kind: "question", stage: 1, short: "What looks wrong?",
       text: "What looks wrong? Ask for a screenshot if they can.",
-      why: "Each problem has a different cause. A screenshot and the phone model help most.",
+      why: "Each problem has a different cause. A screenshot helps tell them apart.",
       basis: ["platform"],
       options: [
         { label: "Part of a game or question is cut off the screen", next: "act.cut", issueId: "i20" },
@@ -938,18 +931,18 @@ window.GUIDE_CONTENT = {
     "act.cut": {
       kind: "action", stage: 3, short: "Scroll or zoom out", who: "participant-now",
       text: "Have them scroll, or zoom out, to see the missing part.",
-      why: "Some activities don't fit some screen sizes. Scrolling or zooming out can bring the missing part into view.",
+      why: "Some activities don't fit some screen sizes. Scrolling or zooming out may bring the missing part into view.",
       basis: ["platform"],
       notFixedNext: "act.cutend", fixedNext: "act.confirm"
     },
     "act.cutend": {
       kind: "end", ending: "no_fix_yet", issueId: "i20",
-      text: "Activities cut off on some screen sizes are a known problem that staff can't fix yet. Note the phone model. If it frustrates them enough to think about leaving, tell your study lead."
+      text: "Activities cut off on some screen sizes are a known problem. Note the phone model. If it frustrates them enough to think about leaving, tell your study lead."
     },
     "act.numbers": {
       kind: "question", stage: 1, short: "Signed out, or only closed?",
       text: "Did they sign out and back in recently, or only close the app?",
-      why: "Signing out and back in loads a fresh copy of the activity. If numbers still show after that, the wording is missing from the activity itself.",
+      why: "If they signed out and back in and still see numbers, the wording is likely missing from the activity itself, not just out of date on the phone.",
       basis: ["platform"],
       options: [
         { label: "Only closed the app, or neither", next: "act.forcequit" },
@@ -961,34 +954,35 @@ window.GUIDE_CONTENT = {
     "act.forcequit": {
       kind: "action", stage: 3, short: "Swipe away and reopen", who: "participant-now",
       text: "Have them close mindLAMP fully (swipe it away), then open it again.",
-      why: "Swiping the app away and reopening it deletes no data. Phone data collection stops until they open it again.",
+      why: "Swiping the app away and reopening it deletes no data. Phone data collection can stop until they reopen it.",
       basis: ["code"],
       notFixedNext: "act.wording", fixedNext: "act.confirm"
     },
     "act.wording": {
       kind: "action", stage: 3, short: "Restore answer wording", who: "staff-now",
-      text: "In the dashboard, open the activity and check every answer choice has its wording. Re-enter any that are missing.",
-      why: "Answer wording was overwritten in some activities during a server outage, and some may still be missing it. Missing wording shows as numbers on the phone.",
+      text: "In the dashboard, open the activity and check that every answer choice has its wording. Re-enter any that are missing.",
+      why: "Answer wording was wiped from some activities during a server outage, and some may still be missing it. Missing wording shows as numbers on the phone.",
       basis: ["platform"],
+      caution: "Only one person should edit the activity at a time.",
       workaroundFor: ["i18"],
       notFixedNext: "act.numend", fixedNext: "act.confirm"
     },
     "act.numend": {
       kind: "end", ending: "not_fixed", issueId: "i18",
-      text: "Your team decides what to do with answers given while the wording was missing.",
+      text: "Decide as a team how to treat answers given while the wording was missing.",
       collect: ["Which activity", "When the activity was added or changed", "A screenshot", "Every participant, or one"]
     },
     "act.slider": {
       kind: "action", stage: 3, short: "Tap first, then drag", who: "participant-later",
       text: "Have them tap a different value first, then drag the slider all the way to the end.",
-      why: "Tapping another value first, then dragging all the way to the end, can make the top value register.",
+      why: "A plain drag can miss the top value. Tapping first can get it to register.",
       basis: ["staff"],
       workaroundFor: ["i07"],
       notFixedNext: "act.sliderend", fixedNext: "act.confirm"
     },
     "act.sliderend": {
       kind: "end", ending: "no_fix_yet", issueId: "i07",
-      text: "This is a known problem that staff can't fix yet. Note in your study records which answer they meant to give."
+      text: "If your protocol allows, note in your study records which answer they meant to give."
     },
     "act.small": {
       kind: "action", stage: 3, short: "Make the text larger", who: "staff-now",
@@ -1036,7 +1030,7 @@ window.GUIDE_CONTENT = {
     "act.fq2": {
       kind: "action", stage: 3, short: "Swipe away and reopen", who: "participant-now",
       text: "Have them close mindLAMP fully (swipe it away), then open it again.",
-      why: "Swiping the app away resets it and deletes no data. Phone data collection stops until they open it again.",
+      why: "Swiping the app away resets it and deletes no data. Phone data collection can stop until they reopen it.",
       basis: ["platform", "code"],
       notFixedNext: "act.notfixed", fixedNext: "act.confirm"
     },
@@ -1059,7 +1053,7 @@ window.GUIDE_CONTENT = {
     },
     "act.notfixed": {
       kind: "end", ending: "not_fixed",
-      text: "If it happens again, start a new session each time, with a screenshot.",
+      text: "If it happens again, start a new session each time, and keep a screenshot.",
       collect: ["A screenshot", "Which activity", "Phone or tablet model and screen size", "Every participant on this activity, or one"]
     },
 
@@ -1082,7 +1076,7 @@ window.GUIDE_CONTENT = {
     "q.open": {
       kind: "action", stage: 3, short: "Explain closing the app", who: "staff-now",
       text: "Explain: leaving the app (going to the home screen) is fine. Swiping it away stops phone data collection until they open it again.",
-      why: "Many people think going to the home screen and swiping the app away are the same.",
+      why: "Going to the home screen and swiping the app away are easy to confuse.",
       basis: ["documented", "staff"],
       notFixedNext: "q.demo"
     },
@@ -1095,28 +1089,28 @@ window.GUIDE_CONTENT = {
     },
     "q.perm": {
       kind: "action", stage: 3, short: "Explain permissions", who: "staff-now",
-      text: "Explain what each permission is for: location for GPS, notifications for activity reminders, health for steps, sleep and heart rate. If they don't want to give one, ask your study lead whether the study can do without it, rather than risk them leaving.",
+      text: "Explain what each permission is for, using your study's consent form: for example, location for GPS, notifications for activity reminders, health access for watch or health-app data. If they don't want to give one, ask your study lead whether the study can do without it, rather than risk them leaving.",
       why: "Your study collects only the phone data it has set up.",
       basis: ["documented", "platform"],
       notFixedNext: "q.demo"
     },
     "q.data": {
       kind: "action", stage: 3, short: "Explain mobile data use", who: "staff-now",
-      text: "Explain that any Wi-Fi works, and mobile data use is small. If the cost really worries them, Wi-Fi only is better than them leaving the study. Expect some gaps, especially on Android.",
-      why: "If they turn off mobile data for mindLAMP, data uploads only on Wi-Fi.",
+      text: "Explain that any Wi-Fi works, and mobile data use is small. If the cost really worries them, Wi-Fi only is better than them leaving the study. Expect some gaps in phone data.",
+      why: "If they turn off mobile data for mindLAMP, data uploads only on Wi-Fi, and phone data can go missing.",
       basis: ["documented", "platform"],
       notFixedNext: "q.demo"
     },
     "q.privacy": {
       kind: "action", stage: 3, short: "Explain who sees data", who: "staff-now",
       text: "Explain who sees their data, using your study's consent form.",
-      why: "The answer depends on your study, so use its consent form.",
+      why: "Who sees the data differs from study to study.",
       basis: ["documented", "platform"],
       notFixedNext: "q.demo"
     },
     "q.working": {
       kind: "action", stage: 3, short: "Check the Users tab", who: "staff-now",
-      text: "Check the Users tab. If Last Active and Last Passive are green, tell them it's working.",
+      text: "Check the Users tab. If Last Active and Last Passive are green, tell them data is coming in.",
       why: "Green means data arrived in the last 2 days, yellow within a week. A stop in the last day or two may not show yet.",
       basis: ["documented"],
       notFixedNext: "@data_missing"
@@ -1283,7 +1277,7 @@ window.GUIDE_CONTENT = {
     "wear.upload": {
       kind: "action", stage: 3, short: "Let data upload first", who: "participant-later",
       text: "Have them open mindLAMP on Wi-Fi, with the phone charged, and leave it open for a few minutes.",
-      why: "Data the phone hasn't sent yet uploads once the app is open and connected. Do this before reinstalling, which deletes it.",
+      why: "Data not yet sent can upload while the app is open and connected. On Android, nothing uploads at 15% battery or lower. Do this before reinstalling, which deletes unsent data.",
       basis: ["documented", "code"],
       notFixedNext: "wear.reinstall", fixedNext: "wear.confirm"
     },
@@ -1813,7 +1807,9 @@ window.GUIDE_CONTENT = {
     { text: "Data that looks wrong rather than missing (call durations, day boundaries in UTC, home time, nearby devices).",
       source: "Research v2 section 2, after E13", reason: "Out of scope for an RA guide per research v2. Goes to Something else." },
     { text: "Server-side notification events (lamp.analytics) to confirm an activity reminder was delivered.",
-      source: "Research v2 P2 step 4", reason: "Unverified whether it shows delivery." }
+      source: "Research v2 P2 step 4", reason: "Unverified whether it shows delivery." },
+    { text: "Recordings over about 2 minutes can fail to upload; ask them to keep recordings short.",
+      source: "starter-issues.md #22 (census, GitHub #909)", reason: "Developer finding only (D21). Candidate for a developer-finding tag (SPEC open item 4)." }
   ]
 };
 
@@ -1842,5 +1838,6 @@ window.GUIDE_CONTENT = {
      so step text no longer starts with it.
    - New: act.wording (restore answer wording, starter #18), data.which watch option, setup.step Self Help option,
      setup.pconfirm and setup.pfixed (studies with no activities), stop.facts caution.
-   - Kept as before, pending Eden: login.upload stays on the login path; common.unconfirmed keeps "start a new
-     session" until the page can reopen a session; no option yet for "they forgot or it felt like too much". */
+   - login.upload removed: at the login screen the app collects nothing, and logout clears unsent data (code read).
+   - Kept as before, pending Eden: common.unconfirmed keeps "start a new session" until the page can reopen a
+     session; no option yet for "they forgot or it felt like too much"; the 2-minute audio limit is held back. */

@@ -89,7 +89,7 @@
     /* What each status means. One copy for the Known problems and How this works pages. */
     STATUS_HELP: {
       heard: "The platform team knows about it. The cause isn't known yet.",
-      understood: "The cause is known.",
+      understood: "The platform team knows what causes it. No fix is planned yet.",
       workaround: "There is a way around it for now.",
       "needs-detail": "The platform team needs more detail. Your next report on it helps.",
       scoping: "The platform team is planning a fix.",
@@ -743,6 +743,13 @@
       const confirmed = (issue.confirmedWorkarounds || []).map(w => Object.assign({}, w));
       const ck = new Set(confirmed.map(w => calc.norm(w.text)));
       const hidden = new Set((issue.hiddenWorkarounds || []).map(calc.norm));
+      /* A confirmed entry keeps the count of teams that used it (D24: promoting a workaround must not drop
+         its "used by N teams"). teams/last are added only when a team row matches. */
+      confirmed.forEach(c => {
+        const k = calc.norm(c.text);
+        const row = (S.agg.workarounds || []).find(w => w.issueId === issue.id && w.key === k);
+        if (row) { c.teams = row.teams; c.last = row.last; }
+      });
       const team = (S.agg.workarounds || []).filter(w => w.issueId === issue.id && !ck.has(w.key) && !hidden.has(w.key) && !hidden.has(calc.hideKey(w)))
         .sort((x, y) => (y.teams - x.teams) || String(y.last || "").localeCompare(String(x.last || "")));
       const g = guide();
@@ -872,7 +879,7 @@
       const notNow = own || (settled ? "" : ((lines.find(p => p.notNowReason) || {}).notNowReason) || "");
       /* label: "Why not now: " when the issue itself is Not now; otherwise the line comes from a proposal
          on an issue with another status, so it names what is on hold (D24: a line must make sense on its own). */
-      return { planned: planned, notNow: notNow, notNowLabel: own ? "Why not now: " : "A proposed fix is on hold: " };
+      return { planned: planned, notNow: notNow, notNowLabel: own ? "Why not now: " : "Fix on hold: " };
     },
     isFixed(issue) { return issue && issue.status === "fixed"; },
     /* One wording for the open triage counts, on Start here and the Dev meeting page. */
@@ -1012,8 +1019,12 @@
     const sum = $("#me-summary");
     if (sum) {
       const rname = role ? C.ROLE_NAME[role] : "";
-      sum.textContent = (S.studyId ? studyLabel(S.studyId) + ", " + (rname || "no role yet")
-        : (rname || (ids.length ? "Pick a study" : "No study or role yet"))) + (S.user.isAdmin ? " (admin)" : "");
+      /* The study in bold, the role quieter beside it (reviews: the comma-joined line read as one long label). */
+      const roleText = (S.studyId ? (rname || "No role yet") : "") + (S.user.isAdmin ? (S.studyId ? " (admin)" : "") : "");
+      const main = S.studyId ? studyLabel(S.studyId)
+        : (rname || (ids.length ? "Pick a study" : "No study or role yet")) + (S.user.isAdmin ? " (admin)" : "");
+      sum.replaceChildren(...[el("span", { class: "sum-study", text: main }),
+        roleText ? el("span", { class: "sum-role", text: roleText }) : null].filter(Boolean));
     }
     /* A test study gets a plain warning, so nobody logs real participants in it. */
     const st = calc.study(S.studyId);

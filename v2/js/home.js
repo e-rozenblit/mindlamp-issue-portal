@@ -1,6 +1,6 @@
 /* Start here page. Owner: core-home-about. Spec: SPEC.md section 7.1, ux-audit items 2, 5, 9 and 10.
-   Also holds PAGE_COPY: the page-head copy (title, one "when" line, at most 3 steps) for every page.
-   Other modules read it as Portal.PAGE_COPY[pageId]. Core folds the steps away (closed by default).
+   Also holds PAGE_COPY: the page-head copy (short title, optional subtitle, optional info or steps) for every page.
+   Other modules read it as Portal.PAGE_COPY[pageId]. Core puts info and steps behind the info button (D24).
    Plain, short sentences. No em-dashes. Nothing here names a study, team, site or person. */
 (function () {
   "use strict";
@@ -14,7 +14,7 @@
      not-now reason on a problem with another status is about one proposed fix, so it says so. */
   function notNowText(plan) {
     if (!plan.notNow) return "";
-    return (plan.notNowLabel === "Why not now: " ? "Why not now: " : "A proposed fix is on hold: ") + plan.notNow;
+    return (plan.notNowLabel === "Why not now: " ? "Why not now: " : "Fix on hold: ") + plan.notNow;
   }
 
   /* ---------- page-head copy for every page ----------
@@ -135,7 +135,9 @@
     let acts;
     if (role === "rc" || !role) acts = [
       action("Troubleshoot a participant", "Step by step, during the call or right after it.", "act:guide", toGuide()),
-      action("Report a problem", "Say how a problem affected your study.", "act:report", toReport)
+      /* Without a study, a report can't be sent, so the second button is the page they can use (matches the subtitle). */
+      role ? action("Report a problem", "Say how a problem affected your study.", "act:report", toReport)
+        : action("Check known problems", "Every problem teams have hit, and what helps.", "act:issues", () => P.go("issues", {}))
     ];
     else if (role === "lead") acts = [
       action("Set up your study", "Your setup decides which troubleshooting steps show.", "act:study", () => P.go("study", {})),
@@ -456,8 +458,11 @@
 })();
 
 /* NOTES (home.js; integrated pass 2, 2026-10-28)
-   1. PAGE_COPY: every page uses P.ui.pageHead(P.PAGE_COPY.<id>). Core folds the steps into a closed
-      "How to use this page" toggle and keeps at most 3.
+   1. PAGE_COPY: every page uses P.ui.pageHead(P.PAGE_COPY.<id>). D24 (10-28): titles match the tab names; the
+      "when" lines and how-to steps were dropped except Troubleshoot, Weekly report (info) and Dev meeting, Admin (steps).
+      Problem rows are titled with the problem's short name (P.ui.issueName). A proposal's not-now reason on a problem
+      that isn't itself Not now reads "Fix on hold: ..."; a plan line shown under "Since your last visit"
+      isn't repeated on the row below.
    2. Developers get one count line and a button to the dev meeting view; admins also get "Sort new problems".
    3. "What happened to what you sent" reads session.triage {state, at} and linkedIssueId/issueId as admin.js
       writes them at triage. Plan and "Not now" lines come from P.calc.planFor (issue fields + proposal lines).

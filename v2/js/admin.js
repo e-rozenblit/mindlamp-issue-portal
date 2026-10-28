@@ -196,6 +196,8 @@
       const nm = name.value.trim(), ln = link.value.trim(), id = slug(nm);
       if (!nm || !id) { msg.textContent = "Add a study name with at least one letter or number."; return; }
       if (id === "*" || S.studies.some(s => s.id === id)) { msg.textContent = "A study with the id " + id + " already exists. Change the name."; return; }
+      /* Same name under a different id would make two studies nobody can tell apart. */
+      if (S.studies.some(s => String(s.name || "").trim().toLowerCase() === nm.toLowerCase())) { msg.textContent = "A study named " + nm + " already exists."; return; }
       if (ln && !isHttp(ln)) { msg.textContent = "The link must start with https://"; return; }
       msg.textContent = "Creating...";
       try {

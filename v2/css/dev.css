@@ -44,3 +44,16 @@
   #v-dev .linkbtn{min-height:44px}
   #v-dev .dev-table td.dev-issue{min-width:220px}
 }
+/* Phones: each ranked issue as a card, numbers labelled, no sideways scrolling (fresh-eyes review). */
+@media (max-width:600px){
+  #v-dev :is(.dev-table,.dev-since) thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  #v-dev :is(.dev-table,.dev-since),#v-dev :is(.dev-table,.dev-since) :is(tbody,tr,td){display:block;width:100%}
+  #v-dev :is(.dev-table,.dev-since) tr{border-bottom:1px solid var(--line);padding:10px 0}
+  #v-dev :is(.dev-table,.dev-since) td{border:0;padding:2px 0}
+  #v-dev :is(.dev-table,.dev-since) td.dev-issue{min-width:0;padding-bottom:6px}
+  #v-dev .dev-since td.dev-issue{font-weight:600}
+  #v-dev :is(.dev-table,.dev-since) td.num{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline;text-align:left;white-space:normal}
+  #v-dev :is(.dev-table,.dev-since) td[data-label]::before{content:attr(data-label);color:var(--muted);font:500 13px var(--body);min-width:13ch}
+  #v-dev .dev-table td.num .hint{min-width:0;max-width:none}
+  #v-dev .dev-status{min-width:0}
+}

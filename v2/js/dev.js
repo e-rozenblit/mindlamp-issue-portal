@@ -144,12 +144,12 @@
         else add("new:" + r.id, "Something new: " + (r.newTitle || "no title"), "r", r);
       });
       const rows = Array.from(groups.values()).sort((a, b) => (b.notFixed - a.notFixed) || ((b.sessions + b.reports) - (a.sessions + a.reports)));
-      out.push(el("div", { class: "scroll" }, el("table", {},
+      out.push(el("div", { class: "scroll" }, el("table", { class: "dev-since" },
         el("thead", {}, el("tr", {}, ["Problem", "Sessions", "Not fixed", "No fix yet", "Reports", "Teams"].map(h => el("th", { scope: "col", text: h })))),
-        el("tbody", {}, rows.map(g => el("tr", {}, el("td", { text: g.label }),
-          el("td", { class: "num", text: String(g.sessions) }), el("td", { class: "num", text: String(g.notFixed) }),
-          el("td", { class: "num", text: String(g.noFix) }), el("td", { class: "num", text: String(g.reports) }),
-          el("td", { class: "num", text: String(g.teams.size) })))))));
+        el("tbody", {}, rows.map(g => el("tr", {}, el("td", { class: "dev-issue", text: g.label }),
+          el("td", { class: "num", "data-label": "Sessions", text: String(g.sessions) }), el("td", { class: "num", "data-label": "Not fixed", text: String(g.notFixed) }),
+          el("td", { class: "num", "data-label": "No fix yet", text: String(g.noFix) }), el("td", { class: "num", "data-label": "Reports", text: String(g.reports) }),
+          el("td", { class: "num", "data-label": "Teams", text: String(g.teams.size) })))))));
       const open = (tc ? tc.notFixed + tc.newProblems + tc.newReports : 0);
       out.push(el("div", { class: "bar" }, el("button", { type: "button", class: "btn ghost",
         text: open ? "Sort the " + open + " unsorted items on the Admin page" : "Open the Admin page", onclick: () => P.go("admin", { focus: "triage" }) })));
@@ -370,16 +370,16 @@
         i.status === "not-now" && (i.notNowReason || i.statusNote) ? el("div", { class: "hint", text: "Why not now: " + (i.notNowReason || i.statusNote) }) : null,
         i.planned ? el("div", { class: "hint", text: "Planned: " + i.planned }) : null,
         traceBlock(i, s)),
-      el("td", {}, statusCell(i, row)),
-      el("td", { class: "num" }, el("b", { text: fmt(s.signal) })),
+      el("td", { "data-label": "Status" }, statusCell(i, row)),
+      el("td", { class: "num", "data-label": "Score" }, el("b", { text: fmt(s.signal) })),
       /* The number in the cell, the words behind an info button, so the table fits (fresh-eyes review). */
-      el("td", { class: "num" }, fmt(s.sev), s.sevFrom !== "reports" ? el("span", { class: "hint", text: " est." }) : null, " ",
+      el("td", { class: "num", "data-label": "Severity" }, fmt(s.sev), s.sevFrom !== "reports" ? el("span", { class: "hint", text: " est." }) : null, " ",
         (() => { const w = calc.sevWords(i, s); return info(el("span", { text: (w.words ? w.words + " " : "") + w.source }), "Severity for " + i.title); })()),
-      el("td", { class: "num" }, String(s.teams), (Number(i.teams) || 0) ? el("div", { class: "hint", text: (Number(i.teams) || 0) + " before the portal" }) : null),
-      el("td", { class: "num", text: String(s.sessions) }),
-      el("td", { class: "num", text: String(s.boosts) }),
-      el("td", { class: "num", text: String(s.recent) }),
-      el("td", { class: "num" }, s.goalHidden ? "Hidden" : fmt(s.goal), s.goalN ? el("div", { class: "hint", text: s.goalHidden ? "Under 3 studies" : plural(s.goalN, "study", "studies") }) : null));
+      el("td", { class: "num", "data-label": "Teams" }, String(s.teams), (Number(i.teams) || 0) ? el("div", { class: "hint", text: (Number(i.teams) || 0) + " before the portal" }) : null),
+      el("td", { class: "num", "data-label": "Sessions", text: String(s.sessions) }),
+      el("td", { class: "num", "data-label": "Affects us too", text: String(s.boosts) }),
+      el("td", { class: "num", "data-label": "Reports, 30 days", text: String(s.recent) }),
+      el("td", { class: "num", "data-label": "Goal weight" }, s.goalHidden ? "Hidden" : fmt(s.goal), s.goalN ? el("div", { class: "hint", text: s.goalHidden ? "Under 3 studies" : plural(s.goalN, "study", "studies") }) : null));
     return row;
   }
 
@@ -394,11 +394,12 @@
   function newRow(n) {
     return el("tr", { class: "dev-new" },
       el("td", {}, "New, not sorted yet: " + n.title, n.security ? el("span", {}, " ", ui.chip("Security", "sev hi")) : null),
-      el("td", {}, ui.chip("Not sorted", "status-none")),
-      el("td", { class: "num", text: "-" }),
-      el("td", { class: "num" }, n.sev === null ? "Not sorted yet" : String(n.sev), n.sev === null ? null : el("div", { class: "hint", text: "This report only" })),
-      el("td", { class: "num", text: "1" }), el("td", { class: "num", text: "0" }),
-      el("td", { class: "num", text: "0" }), el("td", { class: "num", text: "1" }), el("td", { class: "num", text: "-" }));
+      el("td", { "data-label": "Status" }, ui.chip("Not sorted", "status-none")),
+      el("td", { class: "num", "data-label": "Score", text: "-" }),
+      el("td", { class: "num", "data-label": "Severity" }, n.sev === null ? "Not sorted yet" : String(n.sev), n.sev === null ? null : el("div", { class: "hint", text: "This report only" })),
+      el("td", { class: "num", "data-label": "Teams", text: "1" }), el("td", { class: "num", "data-label": "Sessions", text: "0" }),
+      el("td", { class: "num", "data-label": "Affects us too", text: "0" }), el("td", { class: "num", "data-label": "Reports, 30 days", text: "1" }),
+      el("td", { class: "num", "data-label": "Goal weight", text: "-" }));
   }
 
   function goalMapText() {
@@ -767,7 +768,7 @@
     put(h.newBody, ...newRows().map(newRow));
     const onStarter = all.filter(x => x.s.sevFrom !== "reports").length;
     h.starter.hidden = !onStarter;
-    h.starter.textContent = onStarter + " of " + all.length + " issues have no team reports yet, so their severity is the platform team's first estimate.";
+    h.starter.textContent = onStarter + " of " + all.length + " issues have no team reports yet. Their severity, marked \"est.\", is the platform team's first estimate.";
 
     if (!h.dev) return;
     h.quick._issues.refresh();

@@ -13,16 +13,19 @@
   const SPAN = [["week", "This week only"], ["weeks", "A few weeks"], ["months", "Months"], ["start", "Since the study started"], ["unsure", "Not sure"]];
   const RECUR = [["new", "First time we've seen it"], ["recurring", "It keeps happening"], ["returned", "It came back after it was fixed"]];
   const OTHER = ["other", "Other / in between"];
-  /* Impact questions: visible choices, none picked at the start. "Other / in between" opens a note.
-     "other" is left out of severity (core and portal_issue_scores accept only the listed values). */
+  /* Impact questions: visible choices, none picked at the start. Several answers allowed (D24); the
+     exclusive ones ("Nothing", "Nobody yet") rule out the rest. "Can't tell" may sit beside "Data missing":
+     a team can know some data is missing and not know whether the rest is right. "Other / in between" opens
+     a note. Severity uses the most severe answer in each question and leaves "other" out (P.calc.reportSev,
+     portal_issue_scores); goal weight and the tallies count every answer. */
   const IMPACT = [
-    { name: "stops", legend: "What did it stop?", required: true,
+    { name: "stops", legend: "What did it stop?", required: true, exclusive: ["none"],
       opts: [["none", "Nothing"], ["slowed", "Slowed someone down"], ["prevented", "Prevented a task"], ["dropout", "Led to dropout or a dropout request"]] },
-    { name: "data", legend: "What did it do to the data?", required: true,
+    { name: "data", legend: "What did it do to the data?", required: true, exclusive: ["none"],
       opts: [["none", "Nothing"], ["missing", "Data missing"], ["wrong", "Data wrong or misleading"], ["unknown", "Can't tell"]] },
-    { name: "cost", legend: "Who had to deal with it?", required: true,
+    { name: "cost", legend: "Who had to deal with it?", required: true, exclusive: ["nobody"],
       opts: [["participant", "Participants"], ["staff", "Study staff"], ["analyst", "Analysts, later"], ["nobody", "Nobody yet"]] },
-    { name: "mechanism", legend: "Effect on participants (optional)", required: false,
+    { name: "mechanism", legend: "Effect on participants (optional)", required: false, exclusive: [],
       opts: [["motivation", "Less willing to open the app or take part"], ["ability", "Couldn't do the task"],
         ["understanding", "Did it, but misunderstood it"], ["trust", "Doubted the app or the study"]] }
   ];
@@ -79,6 +82,17 @@
     counts.forEach(c => { if (!best || c.n > best.n) best = c; });
     return best ? best.text : "";
   }
+  /* "What do you think caused it?": every ticked answer, or ["unsure"] when none is. */
+  function attrGet() {
+    const v = Array.from(f.attr.querySelectorAll("input:checked")).map(i => i.value);
+    return v.length ? v : ["unsure"];
+  }
+  /* Takes one value (drafts kept before 10-28) or an array. */
+  function attrSet(v) {
+    const want = Array.isArray(v) ? v.map(String) : [String(v || "unsure")];
+    f.attr.querySelectorAll("input").forEach(i => { i.checked = want.includes(i.value); });
+    if (!f.attr.querySelector("input:checked")) { const u = f.attr.querySelector("input[value=unsure]"); if (u) u.checked = true; }
+  }
   function entryTitle(id) {
     const e = ((P.guide().entries) || []).find(x => x.id === id);
     return e ? e.title : "";
@@ -97,14 +111,18 @@
     if (f[name].type === "checkbox") f[name].checked = !!value; else f[name].value = value;
   }
 
-  /* A group of visible choices (radio buttons styled as chips). With note: true, "Other / in between"
-     is added and a note field opens when it is picked or on "Add a note". */
+  /* A group of visible choices styled as chips: radio buttons, or checkboxes with multi: true (D24: several
+     answers where more than one can be true). exclusive lists answers that rule out the others ("Nothing",
+     "Not sure"): picking one clears the rest, and picking another clears it. With note: true, "Other / in
+     between" is added and a note field opens when it is picked or on "Add a note".
+     get() returns a string for a single-choice group and an array for a multi group. */
   function choiceGroup(name, legend, pairs, o) {
     o = o || {};
     const all = o.note ? pairs.concat([OTHER]) : pairs;
+    const multi = !!o.multi, excl = o.exclusive || [];
     const inputs = [];
     const box = el("div", { class: "rp-chips" }, all.map(([v, t]) => {
-      const inp = el("input", { type: "radio", name: "rp-" + name, value: v });
+      const inp = el("input", { type: multi ? "checkbox" : "radio", name: "rp-" + name, value: v });
       inputs.push(inp);
       return el("label", { class: "rp-chip" }, inp, el("span", { text: t }));
     }));
@@ -123,14 +141,27 @@
     box.addEventListener("change", e => {
       dirty.add(name);
       fs.classList.remove("missing");
-      if (o.note && e.target.value === "other" && noteWrap.hidden) { noteWrap.hidden = false; addNote.hidden = true; note.focus(); }
+      if (multi && e.target.checked) {
+        const v = e.target.value;
+        inputs.forEach(i => { if (i !== e.target && (excl.includes(v) || excl.includes(i.value))) i.checked = false; });
+      }
+      if (o.note && e.target.value === "other" && e.target.checked && noteWrap.hidden) { noteWrap.hidden = false; addNote.hidden = true; note.focus(); }
       if (o.onChange) o.onChange(e.target.value);
     });
     radios[name] = {
       el: fs,
       note: note,
-      get() { const c = inputs.find(i => i.checked); return c ? c.value : ""; },
-      set(v) { inputs.forEach(i => { i.checked = i.value === v; }); },
+      multi: multi,
+      get() {
+        if (multi) return inputs.filter(i => i.checked).map(i => i.value);
+        const c = inputs.find(i => i.checked); return c ? c.value : "";
+      },
+      /* Accepts one value or an array, so drafts kept before 10-28 still restore. */
+      set(v) {
+        const want = Array.isArray(v) ? v.map(String) : (v ? [String(v)] : []);
+        const pick = multi ? want : want.slice(0, 1);
+        inputs.forEach(i => { i.checked = pick.includes(i.value); });
+      },
       focus() { (inputs.find(i => i.checked) || inputs[0]).focus(); },
       openNote(text) { if (!note) return; note.value = text || ""; if (text) { noteWrap.hidden = false; addNote.hidden = true; } },
       reset() { inputs.forEach(i => { i.checked = false; }); if (note) { note.value = ""; noteWrap.hidden = true; addNote.hidden = false; } fs.classList.remove("missing"); }
@@ -409,7 +440,7 @@
     const d = { uid: P.S.user.uid, at: new Date().toISOString(), studyId: studyId, issueId: issueId,
       ticked: Array.from(ticked), tickTouched: tickTouched, fromSessions: fromSessions, stepSkip: Array.from(stepSkip),
       dirty: Array.from(dirty), vals: {}, radios: {}, notes: {},
-      attr: (f.attr.querySelector("input:checked") || {}).value || "unsure", security: !!f.security.checked };
+      attr: attrGet(), security: !!f.security.checked };
     textFields().forEach(k => { d.vals[k] = f[k].value; });
     Object.keys(radios).forEach(k => { d.radios[k] = radios[k].get(); if (radios[k].note) d.notes[k] = radios[k].note.value; });
     try { sessionStorage.setItem(DRAFT_KEY, JSON.stringify(d)); } catch (e) { /* ignore */ }
@@ -447,10 +478,10 @@
     (d.dirty || []).forEach(k => dirty.add(k));
     textFields().forEach(k => { if (d.vals && d.vals[k] !== undefined) f[k].value = d.vals[k]; });
     Object.keys(radios).forEach(k => {
-      if (d.radios && d.radios[k]) radios[k].set(d.radios[k]);
+      if (d.radios && d.radios[k] && (!Array.isArray(d.radios[k]) || d.radios[k].length)) radios[k].set(d.radios[k]);
       if (d.notes && d.notes[k]) radios[k].openNote(d.notes[k]);
     });
-    const a = f.attr.querySelector("input[value='" + String(d.attr || "unsure").replace(/[^a-z]/g, "") + "']"); if (a) a.checked = true;
+    attrSet(d.attr);
     f.security.checked = !!d.security;
     if (dirty.has("n") || dirty.has("week") || dirty.has("span") || dirty.has("recur")) scopeOpen = true;
     drawSessions(); prefill();
@@ -514,12 +545,17 @@
     f.scopeSummary = el("p", { class: "rp-line", hidden: true }, f.scopeText, " ", scopeChange);
 
     /* Impact */
-    const impact = IMPACT.map(q => choiceGroup(q.name, q.legend, q.opts, { note: true, required: q.required }));
+    const impact = IMPACT.map(q => choiceGroup(q.name, q.legend, q.opts, { note: true, required: q.required, multi: true, exclusive: q.exclusive }));
     f.words = el("textarea", { maxlength: String(L.words), placeholder: "For example: participants stopped trusting that their activities counted, and two asked if they should keep going." });
 
-    /* Cause guess */
+    /* Cause guess: several allowed (D24); "Not sure" rules out the rest and is the answer when none is ticked. */
     f.attr = el("div", { class: "rp-chips" }, C.ATTR.map(([v, t]) =>
-      el("label", { class: "rp-chip" }, el("input", { type: "radio", name: "rp-attr", value: v, checked: v === "unsure" }), el("span", { text: t }))));
+      el("label", { class: "rp-chip" }, el("input", { type: "checkbox", name: "rp-attr", value: v, checked: v === "unsure" }), el("span", { text: t }))));
+    f.attr.addEventListener("change", e => {
+      if (!e.target.checked) return;
+      const v = e.target.value;
+      f.attr.querySelectorAll("input").forEach(i => { if (i !== e.target && (v === "unsure" || i.value === "unsure")) i.checked = false; });
+    });
 
     /* Setup */
     const phoneQ = choiceGroup("phone", "Which participants' phones does this happen on?", PHONE_Q, {});
@@ -639,7 +675,8 @@
     if (!P.calc.inStudy(studyId)) { f.status.textContent = f.noStudy.textContent || "Only members of this study can send its reports."; return; }
     if (!issueId) { f.status.textContent = "Pick the problem first."; showPicker(true); picker.focusSearch && picker.focusSearch(); return; }
     if (issueId === "new" && !f.newTitle.value.trim()) { f.status.textContent = "Give the new problem a short title."; f.newTitle.focus(); return; }
-    const missing = IMPACT.filter(q => q.required && !radios[q.name].get());
+    const answered = v => (Array.isArray(v) ? v.length > 0 : !!v);
+    const missing = IMPACT.filter(q => q.required && !answered(radios[q.name].get()));
     IMPACT.forEach(q => radios[q.name].el.classList.toggle("missing", missing.includes(q)));
     if (missing.length) {
       f.status.textContent = missing.length === 1
@@ -671,7 +708,8 @@
         phone: radios.phone.get(), osVersion: f.osVersion.value.trim(), appVersion: f.appVersion.value.trim(),
         device: f.device.value.trim(), activity: f.activity.value.trim(), when: f.when.value.trim(), wearable: f.wearable.value.trim()
       },
-      attribution: ((f.attr.querySelector("input:checked")) || {}).value || "unsure",
+      /* Arrays since 10-28 (D24). Older reports hold one value; read either with P.calc.answers(rep, key). */
+      attribution: attrGet(),
       stops: radios.stops.get(), data: radios.data.get(), cost: radios.cost.get(), mechanism: radios.mechanism.get(),
       impactNotes: { stops: note("stops"), data: note("data"), cost: note("cost"), mechanism: note("mechanism") },
       words: f.words.value.trim(),
@@ -705,7 +743,7 @@
     f.server.value = "";
     Object.keys(radios).forEach(k => radios[k].reset());
     f.span.value = "unsure"; f.recur.value = "new"; f.week.value = localDate();
-    const u = f.attr.querySelector("input[value=unsure]"); if (u) u.checked = true;
+    attrSet(["unsure"]);
     f.security.checked = false;
     f.setupMore.open = false;
     f.status.textContent = "";
@@ -773,7 +811,9 @@
 /* NOTES (report.js; integrated pass 2, 2026-10-28)
    1. Report fields (SPEC 4): fixSteps [{node, text}] holds guide steps that fixed the ticked sessions, never `fix`,
       so portal_workarounds can't show them again as a team workaround. impactNotes {stops, data, cost, mechanism}.
-      stops/data/cost/mechanism may be "other" ("Other / in between"): severity skips it (not in STOP_PTS/DATA_PTS).
+      stops/data/cost/mechanism/attribution are arrays since 10-28 (D24, several answers); older reports hold one
+      value. Read them with P.calc.answers(rep, key). Any may include "other" ("Other / in between"): severity
+      skips it (not in STOP_PTS/DATA_PTS) and takes the most severe listed answer per question (P.calc.reportSev).
       setup.phone answers "Which participants' phones does this happen on?" (ios, android, both, unsure).
    2. Test studies: reports there don't count (03 counts_toward_totals), and the form says so.
    3. P.beforeSignOut clears the kept draft (sessionStorage "ip-report-draft").

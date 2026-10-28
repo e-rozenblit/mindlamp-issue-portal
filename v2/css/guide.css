@@ -164,3 +164,11 @@
 #v-guide .g-fixnext{margin:0}
 #v-guide .g-fixnext:empty{display:none}
 @media (max-width:700px){#v-guide .g-mark{min-height:44px;flex:1 1 auto}}
+/* Answer options: light outlined rows that fill on hover, not a wall of solid buttons (new-user reviews) */
+#v-guide .btn.big.g-opt:not(.ghost){background:var(--surface);color:var(--ink);border-color:var(--line)}
+#v-guide .btn.big.g-opt:not(.ghost):hover{border-color:var(--accent);background:var(--accent-soft)}
+#v-guide .btn.was{background:var(--accent-soft);color:var(--ink)}
+#v-guide .g-step h3:focus-visible{outline:none;box-shadow:-6px 0 0 var(--accent)}
+#v-guide .g-start p.hint[role="status"]:not(:empty){color:var(--ink);font-weight:600}
+#v-guide .g-switch{margin:0}
+#v-guide .g-askhead{display:flex;align-items:center;gap:6px}

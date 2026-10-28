@@ -96,7 +96,7 @@
     });
     const wrap = P.ui.el("div", { class: "issue-picker" },
       picker,
-      P.ui.el("label", { class: "hint ip-fixed" }, toggle, " Show fixed issues"));
+      P.ui.el("label", { class: "hint ip-fixed" }, toggle, " Show fixed problems"));
     /* A search covers every known problem, fixed ones included, so a fixed problem isn't reported as new. */
     const searchBox = picker.querySelector("input[type=search]");
     function items() {
@@ -237,7 +237,7 @@
     ctl.area = select([["", "All areas"]].concat(Object.entries(C.AREAS)), "", { "aria-label": "Area" });
     ctl.sort = select([["teams", "Most teams"], ["sessions", "Most sessions"],
       ["boosts", "Most \"affects us too\""], ["recent", "Recently active"]], "teams", { "aria-label": "Sort" });
-    ctl.q = el("input", { type: "search", placeholder: "Search, for example: logged out", "aria-label": "Search issues", autocomplete: "off" });
+    ctl.q = el("input", { type: "search", placeholder: "Search, for example: logged out", "aria-label": "Search known problems", autocomplete: "off" });
     ctl.fixed = el("input", { type: "checkbox" });
     ctl.count = el("p", { class: "hint", role: "status" });
     ctl.list = el("div", { class: "list", id: "issue-list" });
@@ -249,7 +249,7 @@
         el("label", { class: "ib-q" }, ctl.q),
         el("label", {}, "Area", ctl.area),
         el("label", {}, "Sort", ctl.sort),
-        el("label", {}, ctl.fixed, "Show fixed issues")),
+        el("label", {}, ctl.fixed, "Show fixed problems")),
       ctl.count,
       ctl.list);
   }
@@ -265,7 +265,7 @@
   function refreshList() {
     if (!built) return;
     const { empty } = P.ui;
-    if (!P.S.loaded.issues) { ctl.list.replaceChildren(empty("Loading issues...")); ctl.count.textContent = ""; return; }
+    if (!P.S.loaded.issues) { ctl.list.replaceChildren(empty("Loading...")); ctl.count.textContent = ""; return; }
     const all = visibleIssues();
     if (!all.length) { ctl.list.replaceChildren(empty("No issues yet. Use Report to add the first one.")); ctl.count.textContent = ""; return; }
     const sort = ctl.sort.value;
@@ -279,10 +279,10 @@
       return (b.s.teams - a.s.teams) || (b.s.sessions - a.s.sessions) || byTitle(a, b);
     });
     const hiddenFixed = ctl.fixed.checked ? 0 : all.filter(i => P.calc.isFixed(i)).length;
-    ctl.count.textContent = plural(rows.length, "issue") + " shown." + (hiddenFixed ? " " + plural(hiddenFixed, "fixed issue") + " hidden." : "");
+    ctl.count.textContent = plural(rows.length, "problem") + " shown." + (hiddenFixed ? " " + plural(hiddenFixed, "fixed one") + " hidden." : "");
     if (!rows.length) {
       if (ctl.list.querySelector(".empty") === null || ctl.list.children.length !== 1) {
-        ctl.list.replaceChildren(empty("No issues match. Try other words, or turn on Show fixed issues."));
+        ctl.list.replaceChildren(empty("Nothing matches. Try other words, or show fixed problems."));
       }
       return;
     }
@@ -333,7 +333,7 @@
       el("div", { class: "meta" },
         statusChip(i.status, i.status === "workaround" && !wa ? "" : undefined),
         i.status === "workaround" ? null : wa ? chip("Workaround available", "stamp") : chip("No workaround yet", "unconfirmed"),
-        i.confirmed ? chip("Confirmed by the platform team", "stamp") : null,
+        i.confirmed ? chip("Confirmed problem", "stamp") : null,
         i.security ? chip("Security: admins only", "sev hi") : null,
         mine ? chip("Your study: " + plural(mine, "session") + " this month") : null));
   }
@@ -380,9 +380,9 @@
     const spec = P.calc.canSeeProposals() ? safeUrl(i.specUrl) : "";
     out.push(section("Status",
       el("div", { class: "ladder" }, statusChip(i.status, help), help ? " " + help : "",
-        i.confirmed ? [" ", chip("Confirmed by the platform team", "stamp")] : null),
+        i.confirmed ? [" ", chip("Confirmed problem", "stamp")] : null),
       plans.notNow.map(t => el("p", {}, el("b", { text: "Why not now: " }), t)),
-      plans.ideaNotNow.map(t => el("p", {}, el("b", { text: "A proposed fix is on hold: " }), t)),
+      plans.ideaNotNow.map(t => el("p", {}, el("b", { text: "Fix on hold: " }), t)),
       i.status !== "not-now" && i.statusNote ? el("p", { text: i.statusNote }) : null,
       plans.planned.map(t => el("p", {}, el("b", { text: "What's planned: " }), t)),
       spec ? el("p", {}, el("a", { href: spec, target: "_blank", rel: "noopener", text: "Open the working spec" })) : null));
@@ -484,7 +484,7 @@
     kids.push(items.length ? el("ul", { class: "clean walist" }, items)
       : i.status === "workaround"
         ? el("p", { text: "The platform team knows a way around this, but it isn't written up here yet. Ask them for it." })
-        : el("p", { class: "hint", text: "None known yet. If something helped, add it when you report this issue." }));
+        : el("p", { class: "hint", text: "None known yet. If something helped, add it when you report this problem." }));
     return section("What helps", ...kids);
   }
 
@@ -638,4 +638,11 @@
    - Fallback before the migration leaves test studies out of team workaround counts.
 
    INTEGRATED (pass 2, 2026-10-28): status meanings come from C.STATUS_HELP (core). Public plan lines from
-   proposals arrive as S.agg.plans (core loads portal_proposal_lines). */
+   proposals arrive as S.agg.plans (core loads portal_proposal_lines).
+
+   D24 REFRESH (2026-10-28): each card reads "What people see", then "What helps", then Status (replaces the
+   "What helps first" order above). "Workaround known" with nothing attached says under What helps that the
+   platform team has one and to ask them; the status line adds no claim. One plan line per problem (its own, else
+   a proposal's). A proposal's not-now reason reads "Fix on hold". The "two ways" note sits behind
+   the info button next to "Does this affect your study?". Names via P.ui.issueName (short name, sentence under it).
+   Picker: no collapse, so every known problem is listed before "Something new"; a search also covers fixed ones. */

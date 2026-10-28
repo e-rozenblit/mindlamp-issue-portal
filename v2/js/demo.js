@@ -98,7 +98,7 @@
     issue("i21", { short: "Blank screen on open", title: "The app opens to a blank screen and doesn't load", area: "app",
       symptom: "The app shows a white screen after the logo and does not load.",
       status: "not-now", stops: "prevented", data: "none", cost: "staff",
-      notNowReason: "Too few reports to find a pattern yet. Please keep logging sessions.",
+      notNowReason: "Not enough reports yet to see a pattern. Logging your sessions helps.",
       statusHistory: [{ from: "heard", to: "not-now", at: ago(1, 4), by: "demo-admin" }], statusChangedAt: ago(1, 4),
       workarounds: ["Close the app fully and open it again."] })
   ];
@@ -178,7 +178,7 @@
         stage: "full", created: ago(8) } },
     { collection: "proposals", id: "demo-p3", author: "demo-admin", created_at: ago(4),
       data: { what: "Redesign the battery settings screen", issues: ["i10"], decision: "not-now",
-        notNowReason: "We first need to know which phones drain fastest. Please keep logging sessions.", scoper: "", by: "Sample Admin",
+        notNowReason: "We need to see which phones drain fastest first. Logging your sessions helps.", scoper: "", by: "Sample Admin",
         stage: "captured", created: ago(4) } },
 
     { collection: "feedback", id: "demo-f1", author: "demo-lead", created_at: ago(2),
@@ -471,16 +471,24 @@
       db.docs.filter(function (d) { return d.collection === "reports" && !sec(d) && counted(d); }).forEach(function (d) {
         var iid = effIssue(d); if (!iid || iid === "new" || (!isAdmin() && S.indexOf(iid) >= 0)) return;
         var o = out[iid] = out[iid] || { issue_id: iid, sum: 0, n: 0, studies: {}, teams: {}, stops: {}, data: {} };
-        if (d.data.stops in SP && d.data.data in DP) {
-          o.sum += SP[d.data.stops] + DP[d.data.data]; o.n++;
+        /* An answer is one value (older reports) or an array (D24): severity takes the most severe answer
+           in each question; tallies and goal threats count every answer (as portal_issue_scores). */
+        var C = window.Portal && window.Portal.calc;
+        var ans = function (k) { return C && C.answers ? C.answers(d.data, k) : (d.data[k] ? [].concat(d.data[k]) : []); };
+        var sp = null, dp = null;
+        ans("stops").forEach(function (a) { if (Object.prototype.hasOwnProperty.call(SP, a)) sp = Math.max(sp === null ? 0 : sp, SP[a]); });
+        ans("data").forEach(function (a) { if (Object.prototype.hasOwnProperty.call(DP, a)) dp = Math.max(dp === null ? 0 : dp, DP[a]); });
+        if (sp !== null && dp !== null) {
+          o.sum += sp + dp; o.n++;
           if (d.study_id) o.teams[d.study_id] = 1;
-          o.stops[d.data.stops] = (o.stops[d.data.stops] || 0) + 1;
-          o.data[d.data.data] = (o.data[d.data.data] || 0) + 1;
+          ans("stops").forEach(function (a) { if (Object.prototype.hasOwnProperty.call(SP, a)) o.stops[a] = (o.stops[a] || 0) + 1; });
+          ans("data").forEach(function (a) { if (Object.prototype.hasOwnProperty.call(DP, a)) o.data[a] = (o.data[a] || 0) + 1; });
         }
         var st = d.study_id && db.docs.find(function (x) { return x.collection === "studies" && x.id === d.study_id; });
         var rg = st && Array.isArray(st.data.researcherGoals) ? st.data.researcherGoals.slice(0, 3) : [];
         if (!rg.length) return;
-        var goals = [].concat(M.stops[d.data.stops] || [], M.data[d.data.data] || [], M.cost[d.data.cost] || []);
+        var goals = [];
+        ["stops", "data", "cost"].forEach(function (k) { ans(k).forEach(function (a) { if (M[k] && Object.prototype.hasOwnProperty.call(M[k], a)) goals = goals.concat(M[k][a]); }); });
         var p = 0; goals.forEach(function (gl) { var ix = rg.indexOf(gl); if (ix >= 0) p = Math.max(p, 3 - ix); });
         o.studies[d.study_id] = Math.max(o.studies[d.study_id] || 0, p);
       });

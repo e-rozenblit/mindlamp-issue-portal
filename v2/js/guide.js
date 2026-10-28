@@ -16,7 +16,7 @@
   function otherLabel(kind) { return kind === "question" ? OTHER_Q : kind === "action" ? OTHER_A : OTHER; }
   const ENGINE_FIXED = "__fixed";      // the "fixed" ending the engine makes when an action has no fixedNext
   const MISSING = "__missing";         // a broken link in the content
-  const ANSWER_LABEL = { fixed: "Fixed", not_fixed: "Not fixed", other: OTHER, next: "Next" };
+  const ANSWER_LABEL = { fixed: "Fixed", not_fixed: "Not fixed", other: OTHER, next: "Done" };
   const OS_LABEL = { ios: "iPhone", android: "Android" };
   const DEVICE_HINT = "On the dashboard's Users tab, hover over Last Active to see the phone model and app version. It sometimes says unknown.";
   /* Info button (D24: secondary text opens on hover, tap and keyboard). Falls back to a fold before core has it. */
@@ -493,7 +493,7 @@
     if (!run.phone) {
       pendingEntry = id;
       V.phoneMsg.textContent = "Pick the phone type to start.";
-      try { V.phoneBtns[0].focus(); } catch (e) { /* ignore */ }
+      try { V.start.scrollIntoView({ block: "start" }); V.phoneBtns[0].focus({ preventScroll: true }); } catch (e) { /* ignore */ }
       return;
     }
     startEntry(id);
@@ -699,11 +699,15 @@
     let undoRow = null;
     if (undo) {
       const u = btn("Undo", "btn ghost", () => undoBack());
-      const what = undo.to - undo.from > 1 ? "Your later answers were cleared." : "Your last answer was cleared.";
+      const what = undo.to - undo.from > 1 ? "Went back. Your later answers will be replaced." : "Went back one step.";
       undoRow = el("div", { class: "g-undo g-row", role: "status" }, el("span", { text: what }), u);
     }
+    /* The path just moved to another problem: say so, so the change of questions makes sense. */
+    const lastP = run.path[run.path.length - 1];
+    const switched = lastP && lastP.kind === "jump" && entryById(String(lastP.node).slice(1));
     V.step.replaceChildren(el("div", { class: "panel g-step" + (n.dataRisk ? " risk" : "") },
       undoRow,
+      switched ? el("p", { class: "notice g-switch", role: "status", text: "Switched to: " + switched.title }) : null,
       meta,
       el("h3", { tabindex: "-1", "data-focus": "", text: n.text || n.short || "" }),
       (n.caution || n.dataRisk) ? el("div", { class: "caution", role: "note" },
@@ -765,7 +769,7 @@
     if (note.value) noteBox.open = true;
     let undoRow = null;
     if (undo) undoRow = el("div", { class: "g-undo g-row", role: "status" },
-      el("span", { text: undo.to - undo.from > 1 ? "Your later answers were cleared." : "Your last answer was cleared." }), btn("Undo", "btn ghost", () => undoBack()));
+      el("span", { text: undo.to - undo.from > 1 ? "Went back. Your later answers will be replaced." : "Went back one step." }), btn("Undo", "btn ghost", () => undoBack()));
     const anyRisk = chain.risky.some(x => nodeOf(x).dataRisk);
     V.step.replaceChildren(el("div", { class: "panel g-step g-fixes" },
       undoRow,
@@ -855,9 +859,8 @@
       const model = followInput("model", "Phone model (optional)", 80);
       const os = followInput("osVersion", "Phone OS version (optional)", 40, "In the phone's Settings, under About.");
       const app = followInput("appVersion", "mindLAMP app version (optional)", 40);
-      parts.push(el("div", { class: "g-block g-ask" }, el("div", { class: "k", text: "Before you hang up, ask:" }),
+      parts.push(el("div", { class: "g-block g-ask" }, el("div", { class: "k g-askhead" }, "Before you hang up, ask: ", info(el("p", { text: DEVICE_HINT }), "Where else to find these")),
         el("div", { class: "grid2" }, model.field, os.field, app.field),
-        el("p", { class: "hint", text: DEVICE_HINT }),
         sendRow("device", "Save phone details", "Update phone details", () => ({
           device: { model: model.input.value.trim(), osVersion: os.input.value.trim(), appVersion: app.input.value.trim() },
           stopgapsShown: sg.map(s => s.id)
@@ -916,7 +919,7 @@
       seen.add(k);
       out.push({ key: key, text: String(text).trim(), label: String(label || text).trim(), meta: meta || "" });
     };
-    triedSteps().forEach(p => { const n = nodeOf(p.node); if (n && n.text) add("node:" + p.node, n.text, n.short || n.text, "Tried on this call"); });
+    /* Stopgaps and other teams' workarounds first: on these endings the steps tried didn't fix it. */
     sg.forEach(s => add("sg:" + s.id, s.text, s.text, ""));
     const iid = issueIdOf(run);
     const iss = iid ? P.calc.issue(iid) : null;
@@ -929,6 +932,7 @@
       (w.team || []).forEach(x => add("wa:" + (x.key || P.calc.norm(x.text || "")), x.text, x.text,
         "Used by " + (x.teams || 1) + ((x.teams || 1) > 1 ? " teams" : " team")));
     }
+    triedSteps().forEach(p => { const n = nodeOf(p.node); if (n && n.text) add("node:" + p.node, n.text, n.short || n.text, "Tried on this call"); });
     return out;
   }
   function helpedBlock(sg) {
