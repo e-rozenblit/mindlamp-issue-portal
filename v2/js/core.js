@@ -173,7 +173,9 @@
     },
     STAGES: { 1: "Narrow it down", 2: "Common causes", 3: "Suggested fixes", 4: "Check it worked", 5: "Send to the platform team" },
     OUTCOMES: { fixed: "Fixed", unconfirmed: "Fix not confirmed yet", not_fixed: "Still not fixed", no_fix_yet: "No known fix yet",
-      new_problem: "New problem", ended_early: "Ended early" },
+      new_problem: "New problem", ended_early: "Ended early", not_app: "Not an app problem" },
+    /* Where "ask the platform team" points (D25). */
+    CONTACT: "mindlamp@bidmc.harvard.edu",
     ENTRY_GROUPS: { participant: "The participant says", noticed: "You noticed", study: "Study tasks", other: "" },
     PRIVACY_HINT: "No names, IDs, dates of birth or other details that identify a person.",
     PUBLIC_HINT: "Other teams can see this. Your study's name shows only if your study chose to show it.",
@@ -586,10 +588,10 @@
       if (!sb || !S.user.uid) return;
       const call = async name => { try { const { data, error } = await sb.rpc(name); return error ? null : data; } catch (e) { return null; } };
       const triageAllowed = S.user.isAdmin || S.user.memberships.some(m => m.role === "dev" || m.role === "platform");
-      const [stats, boosts, was, goals, tc, ti, scores, lines] = await Promise.all([
+      const [stats, boosts, was, goals, tc, ti, scores, lines, notApp] = await Promise.all([
         call("portal_issue_stats"), call("portal_boosts"), call("portal_workarounds"),
         call("portal_goal_tallies"), call("portal_triage_counts"), triageAllowed ? call("portal_triage_items") : null,
-        call("portal_issue_scores"), call("portal_proposal_lines")
+        call("portal_issue_scores"), call("portal_proposal_lines"), call("portal_not_app")
       ]);
       const a = S.agg;
       a.ready = stats !== null;
@@ -608,8 +610,13 @@
         sessions30: r.sessions_30d, boosts: r.boosts, last: r.last_at }]));
       a.boosts = (boosts || []).map(b => ({ issueId: b.issue_id, goal: b.goal || "", why: b.why || "", role: b.role || "",
         studyName: b.study_name || "", at: b.boosted_at, mine: !!b.mine }));
-      a.workarounds = (was || []).map(w => ({ issueId: w.issue_id, text: w.wa_text, key: w.wa_key, teams: w.teams,
-        reports: w.reports, sessions: w.sessions, credited: w.credited || [], last: w.last_at, hide: w.wa_hide || "" }));
+      /* kind "text": a team's own words (key = the normalized text); "step" / "stopgap": picks of a guide
+         step or stopgap (key = its id, no text). */
+      a.workarounds = (was || []).map(w => ({ issueId: w.issue_id, text: w.wa_text || "", key: w.wa_key, teams: w.teams,
+        reports: w.reports, sessions: w.sessions, credited: w.credited || [], last: w.last_at, hide: w.wa_hide || "",
+        kind: w.wa_kind || "text" }));
+      /* "Not an app problem" counts per reason, entry and day (portal_not_app); null before 03 has run. */
+      a.notApp = notApp ? notApp.map(r => ({ reason: r.not_app_reason || "", entryId: r.entry_id || "", day: String(r.day || "").slice(0, 10), n: r.n })) : null;
       a.goals = (goals || []).map(g => ({ kind: g.kind, goal: g.goal, first: g.ranked_first, top3: g.in_top3, studies: g.studies_ranked }));
       const c = (tc && tc[0]) || null;
       a.triageCounts = c ? { sessions7: c.sessions_7d, notFixed: c.not_fixed_open, newProblems: c.new_problems_open, newReports: c.new_reports_open } : null;
@@ -629,7 +636,7 @@
     if (e && e.code === "offline") return "Sign in to save.";
     if (e && (e.code === "42501" || /row-level security|permission/i.test(e.message || ""))) return "You don't have permission to change this.";
     if (e && e.code === "23505") return "That already exists.";
-    if (e && e.code === "23514") return "This can't be saved yet. Tell the platform team with \"Feedback on this page\" at the top.";
+    if (e && e.code === "23514") return "This can't be saved yet. Please email " + C.CONTACT + ".";
     return "Couldn't save. Try again in a moment.";
   }
 
@@ -656,7 +663,7 @@
         /* Fallback before 03-migration.sql, or while summaries load: only rows this person can read. */
         const monthAgo = Date.now() - 30 * 864e5;
         const reps = S.reports.filter(r => (r.linkedIssueId || r.issueId) === issue.id && !r.security);
-        const sess = S.sessions.filter(x => (x.linkedIssueId || x.issueId) === issue.id);
+        const sess = S.sessions.filter(x => (x.linkedIssueId || x.issueId) === issue.id && calc.effectiveOutcome(x) !== "not_app");
         const keys = new Set([...reps, ...sess].map(calc.teamKey).filter(Boolean));
         o = { boosts: S.boosts.filter(b => b.issueId === issue.id).length, reports: reps.length,
           recent: reps.filter(r => Date.parse(r.created) > monthAgo).length, sessions: sess.length,
@@ -747,15 +754,17 @@
          its "used by N teams"). teams/last are added only when a team row matches. */
       confirmed.forEach(c => {
         const k = calc.norm(c.text);
-        const row = (S.agg.workarounds || []).find(w => w.issueId === issue.id && w.key === k);
+        const row = (S.agg.workarounds || []).find(w => w.issueId === issue.id && (w.kind || "text") === "text" && w.key === k);
         if (row) { c.teams = row.teams; c.last = row.last; }
       });
-      const team = (S.agg.workarounds || []).filter(w => w.issueId === issue.id && !ck.has(w.key) && !hidden.has(w.key) && !hidden.has(calc.hideKey(w)))
+      const team = (S.agg.workarounds || []).filter(w => w.issueId === issue.id && (w.kind || "text") === "text" && w.text &&
+          !ck.has(w.key) && !hidden.has(w.key) && !hidden.has(calc.hideKey(w)))
         .sort((x, y) => (y.teams - x.teams) || String(y.last || "").localeCompare(String(x.last || "")));
       const g = guide();
       const gs = [];
-      Object.entries(g.nodes || {}).forEach(([id, n]) => { if ((n.workaroundFor || []).includes(issue.id)) gs.push({ nodeId: id, text: n.text }); });
-      Object.entries(g.stopgaps || {}).forEach(([id, n]) => { if ((n.workaroundFor || []).includes(issue.id)) gs.push({ stopgapId: id, text: n.text }); });
+      const used = calc.suggestionUse(issue.id);
+      Object.entries(g.nodes || {}).forEach(([id, n]) => { if ((n.workaroundFor || []).includes(issue.id)) gs.push({ nodeId: id, text: n.text, teams: used["step:" + id] || 0 }); });
+      Object.entries(g.stopgaps || {}).forEach(([id, n]) => { if ((n.workaroundFor || []).includes(issue.id)) gs.push({ stopgapId: id, text: n.text, teams: used["stopgap:" + id] || 0 }); });
       return { platform: (issue.workarounds || []).map(t => ({ text: t })), confirmed: confirmed, team: team, guide: gs };
     },
     sessionsFor(f) {
@@ -763,11 +772,84 @@
       const since = f.sinceDays ? Date.now() - f.sinceDays * 864e5 : 0;
       return S.sessions.filter(x =>
         (!f.studyId || x.studyId === f.studyId) &&
-        (!f.issueId || (x.linkedIssueId || x.issueId) === f.issueId) &&
+        (!f.issueId || ((x.linkedIssueId || x.issueId) === f.issueId && calc.effectiveOutcome(x) !== "not_app")) &&
         (!f.entryId || x.entryId === f.entryId) &&
-        (!f.outcome || x.outcome === f.outcome) &&
+        (!f.outcome || calc.effectiveOutcome(x) === f.outcome) &&
         (!since || Date.parse(x.created) >= since)
       ).sort((a, b) => String(b.created).localeCompare(String(a.created)));
+    },
+    /* A session's outcome for counting: the follow-up's final result when staff came back later, else the
+       outcome saved at the ending (CONTRACT-2026-10-28). Use this wherever an outcome is counted. */
+    effectiveOutcome(s) {
+      const f = s && s.followUp && s.followUp.final;
+      return f || (s ? s.outcome || "" : "");
+    },
+    /* Fixes a session left to try later: marked "later" at the ending (or, after a follow-up that still
+       wasn't sure, marked "not tried"). Older unconfirmed sessions name one untested fix. */
+    laterFixes(s) {
+      if (s.followUp) return (s.followUp.results || []).filter(r => r.mark === "later" || r.mark === "not_tried").map(r => r.node);
+      const later = (s.fixes || []).filter(f => f && f.mark === "later").map(f => f.node);
+      return later.length ? later : (s.untestedFix ? [s.untestedFix] : []);
+    },
+    /* The signed-in person's own sessions still waiting on a result, newest first. */
+    openSessions() {
+      return S.sessions.filter(s => s.author === S.user.uid && (calc.effectiveOutcome(s) === "unconfirmed" ||
+          (!s.followUp && (s.fixes || []).some(f => f && f.mark === "later"))))
+        .sort((a, b) => String(b.created).localeCompare(String(a.created)))
+        .map(s => ({ id: s.id, created: s.created, entryId: s.entryId || "", issueId: s.linkedIssueId || s.issueId || "",
+          studyId: s.studyId || "", laterFixes: calc.laterFixes(s) }));
+    },
+    /* "Not an app problem" sessions (D25), counted for the dev meeting as input for feature ideas.
+       Counts only, never study names. From portal_not_app (every counted session) once 03 has run;
+       before that, from the sessions this person can read. */
+    notAppTally(sinceIso) {
+      const since = sinceIso ? Date.parse(sinceIso) : 0;
+      const rows = S.agg.notApp ? S.agg.notApp
+        : S.sessions.filter(s => { const st = s.studyId ? calc.study(s.studyId) : null;
+          return calc.effectiveOutcome(s) === "not_app" && !s.outsideStudy && !(st && String(st.test) === "true"); })
+          .map(s => ({ reason: s.notAppReason || "", entryId: s.entryId || "", day: String(s.created || "").slice(0, 10), n: 1 }));
+      const out = { total: 0, byReason: {}, byEntry: {} };
+      rows.forEach(r => {
+        if (since && Date.parse(r.day + "T23:59:59Z") < since) return;
+        const n = Number(r.n) || 0;
+        out.total += n;
+        const k = r.reason || "other";
+        out.byReason[k] = (out.byReason[k] || 0) + n;
+        const e = r.entryId || "other";
+        out.byEntry[e] = (out.byEntry[e] || 0) + n;
+      });
+      return out;
+    },
+    /* Picks of existing suggestions as one list of { kind, id }: a session's helpedPicks or a report's fixPicks. */
+    picksOf(rec) {
+      const list = (rec && (rec.helpedPicks || rec.fixPicks)) || [];
+      return (Array.isArray(list) ? list : []).filter(p => p && p.kind && p.id);
+    },
+    /* How many teams picked each existing suggestion for an issue: { "step:<node>": n, "stopgap:<id>": n,
+       "team:<key>": n }. A team workaround also counts teams that wrote the same words. From
+       portal_workarounds once 03 has run; before that, from the records this person can read. */
+    suggestionUse(issueId) {
+      const out = {};
+      if (S.agg.ready) {
+        (S.agg.workarounds || []).filter(w => w.issueId === issueId).forEach(w => {
+          if (w.kind === "step" || w.kind === "stopgap") out[w.kind + ":" + w.key] = w.teams;
+          else { out["team:" + w.key] = w.teams; if (w.hide) out["team:md5:" + w.hide] = w.teams; }
+        });
+        return out;
+      }
+      const sets = {};
+      const add = (k, rec) => { const t = calc.teamKey(rec); if (t) (sets[k] = sets[k] || new Set()).add(t); };
+      const use = (rec, text) => {
+        calc.picksOf(rec).forEach(p => add(p.kind + ":" + p.id, rec));
+        const t = calc.norm(text);
+        if (t && !C.NOT_A_FIX.includes(t)) add("team:" + t, rec);
+      };
+      S.sessions.filter(x => (x.linkedIssueId || x.issueId) === issueId && calc.effectiveOutcome(x) !== "not_app" && !x.outsideStudy)
+        .forEach(x => use(x, x.helped));
+      S.reports.filter(r => (r.linkedIssueId || r.issueId) === issueId && !r.security && !r.outsideStudy)
+        .forEach(r => use(r, r.fix));
+      Object.keys(sets).forEach(k => { out[k] = sets[k].size; });
+      return out;
     },
     myIssueIds() {
       const ids = new Set();
@@ -1009,7 +1091,7 @@
       badge.hidden = false;
       badge.textContent = role
         ? C.ROLE_NAME[role] + (member ? " in this study" : "") + ": " + C.ROLE_DEF[role]
-        : "No role yet. The platform team sets your role for each study.";
+        : "No role yet. Email " + C.CONTACT + " to get one.";
     }
     const adm = $("#me-admin");
     if (adm) adm.hidden = !S.user.isAdmin;
@@ -1198,7 +1280,7 @@
       if (!sb) { $("#auth-status").textContent = "Couldn't reach the sign-in service. Check your connection and reload."; return; }
       $("#auth-status").textContent = "Signing in...";
       const { error } = await sb.auth.signInWithPassword({ email: $("#auth-email").value.trim(), password: $("#auth-pass").value });
-      if (error) { $("#auth-status").textContent = "That email and password didn't match. Check them, or ask the platform team to reset your password."; return; }
+      if (error) { $("#auth-status").textContent = "That email and password didn't match. To reset your password, email " + C.CONTACT + "."; return; }
       location.reload();
     });
     $("#auth-email").focus();

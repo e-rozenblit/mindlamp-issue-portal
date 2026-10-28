@@ -172,3 +172,22 @@
 #v-guide .g-start p.hint[role="status"]:not(:empty){color:var(--ink);font-weight:600}
 #v-guide .g-switch{margin:0}
 #v-guide .g-askhead{display:flex;align-items:center;gap:6px}
+/* Follow-up later (D24): open sessions on the start screen, and one session opened to record what happened */
+#v-guide .g-open{display:grid;gap:8px}
+#v-guide .g-open h3{margin:0}
+#v-guide ul.g-openlist{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+#v-guide .g-openrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:var(--r);min-width:0;overflow-wrap:anywhere}
+#v-guide .g-openrow>span{min-width:0}
+#v-guide .g-openrow .btn{flex:none}
+#v-guide .g-followup{display:grid;gap:12px}
+#v-guide fieldset.g-final{border:0;padding:0;margin:0;display:grid;gap:6px;min-width:0}
+#v-guide fieldset.g-final legend{font-weight:600;padding:0;margin-bottom:6px}
+#v-guide .g-mark-worked:has(input:checked){border-color:var(--ok)}
+#v-guide .g-mark-didnt:has(input:checked){border-color:var(--warn)}
+#v-guide .g-goodtoknow{border-left:3px solid var(--accent);padding-left:10px}
+#v-guide .g-goodtoknow ul{display:grid;gap:8px}
+#v-guide .g-end-not_app{border-left-color:var(--accent)}
+@media (max-width:700px){#v-guide .g-openrow{flex-direction:column;align-items:stretch}#v-guide .g-openrow .btn{min-height:44px}}
+#v-guide .g-followup h3{font-size:18px;line-height:1.35;margin:0}
+#v-guide .g-followup h3:focus{outline:none}
+#v-guide .g-followup h3:focus-visible{box-shadow:-6px 0 0 var(--accent)}

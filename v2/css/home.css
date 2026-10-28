@@ -9,3 +9,6 @@
 /* D24 refresh (2026-10-28): list heading with its info button */
 #v-home .home-head{gap:6px;align-items:center;flex-wrap:nowrap}
 #v-home .home-head h3{margin:0}
+/* Waiting for a result (2026-10-28): rows past the first five stay hidden until "Show all" */
+#v-home .home-sent>li[hidden]{display:none}
+#v-home .home-open .bar{justify-content:space-between}

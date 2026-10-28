@@ -39,3 +39,6 @@
   #v-report .rp-chip{flex:1 1 100%}
   #v-report .linkbtn{min-height:44px}
 }
+
+/* "What helped": a count under each suggestion, not run into its text */
+#v-report .rp-meta{display:block;font-size:13px;margin-top:2px}

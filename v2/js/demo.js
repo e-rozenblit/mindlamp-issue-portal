@@ -135,6 +135,15 @@
     sess("sample-a", "demo-analyst", 2, { entryId: "data_missing", issueId: "i08", outcome: "not_fixed", role: "analyst", triage: { state: "new" } }),
     sess("sample-a", "demo-rc", 6, { entryId: "battery", issueId: "i10", outcome: "unconfirmed", untestedFix: "batt.data",
       untestedFixText: "Explain that any Wi-Fi works, and mobile data use is small." }),
+    /* Two fixes left to try later, no follow-up yet (an open session). */
+    sess("sample-a", "demo-rc", 1, { entryId: "reminders", issueId: "i03", outcome: "unconfirmed", phone: "android",
+      fixes: [{ node: "rem.notif", mark: "didnt" }, { node: "rem.focus", mark: "later" }, { node: "rem.battery", mark: "later" }] }),
+    /* "Not an app problem" (D25): never counted toward an issue, tallied for the dev meeting. */
+    sess("sample-a", "demo-rc", 2, { entryId: "not_done", issueId: null, outcome: "not_app", notAppReason: "forgot" }),
+    sess("sample-a", "demo-rc", 4, { entryId: "not_done", issueId: null, outcome: "not_app", notAppReason: "burden" }),
+    /* What helped: picks of existing suggestions. */
+    sess("sample-a", "demo-rc", 3, { entryId: "reminders", issueId: "i03", outcome: "no_fix_yet",
+      helpedPicks: [{ kind: "stopgap", id: "alarm" }, { kind: "step", id: "rem.focus" }] }),
     /* Sample Study A, older */
     sess("sample-a", "demo-rc", 15, { entryId: "reminders", issueId: "i03", outcome: "fixed", fixedBy: "rem.notif",
       fixedByText: "In the phone's Settings, open Notifications, find mindLAMP, and turn notifications on, with sound." }),
@@ -144,15 +153,17 @@
     sess("sample-b", "demo-rc-b", 2, { entryId: "reminders", issueId: "i03", outcome: "not_fixed", triage: { state: "new" } }),
     sess("sample-b", "demo-rc-b", 3, { entryId: "login", issueId: "i01", outcome: "not_fixed", triage: { state: "new" } }),
     sess("sample-b", "demo-rc-b", 4, { entryId: "activity_wrong", issueId: "i07", outcome: "no_fix_yet" }),
+    sess("sample-b", "demo-rc-b", 6, { entryId: "reminders", issueId: "i03", outcome: "no_fix_yet",
+      helpedPicks: [{ kind: "team", id: "set a phone alarm as a backup" }] }),
     sess("sample-b", "demo-rc-b", 1, { entryId: "other", issueId: null, outcome: "new_problem",
       newProblem: { what: "Text runs off the edge of the screen", since: "Two days" }, triage: { state: "new" } }),
 
     rep("demo-r1", "sample-a", "demo-rc", 12, { issueId: "i03", n: 2, stops: "prevented", data: "missing", cost: "staff",
-      fix: "Set a phone alarm as a backup", setup: { phone: "both" } }),
+      fix: "Set a phone alarm as a backup", fixPicks: [{ kind: "stopgap", id: "alarm" }], setup: { phone: "both" } }),
     rep("demo-r2", "sample-a", "demo-analyst", 9, { issueId: "i08", n: 3, stops: "none", data: "missing", cost: "analyst", role: "analyst",
       setup: { phone: "android" } }),
     rep("demo-r3", "sample-b", "demo-rc-b", 5, { issueId: "i03", n: 2, stops: "slowed", data: "missing", cost: "participant",
-      setup: { phone: "ios" } }),
+      fixPicks: [{ kind: "step", id: "rem.focus" }], setup: { phone: "ios" } }),
     rep("demo-r4", "sample-b", "demo-rc-b", 8, { issueId: "i01", n: 1, stops: "prevented", data: "none", cost: "staff",
       fix: "Send the login details again", setup: { phone: "ios" } }),
     rep("demo-r5", "sample-b", "demo-rc-b", 2, { issueId: "new", newTitle: "Dashboard chart shows no bars",
@@ -253,7 +264,7 @@
       if (d.collection === "proposals" && !(hasAnyRole("dev") || hasAnyRole("platform"))) return err("42501", "row-level security");
       delete d.data.triage; delete d.data.linkedIssueId; delete d.data.statusHistory;
       if (d.collection === "boosts" && d.id !== (d.data.issueId + "__" + uid() + "__" + (d.study_id || "none"))) return err("42501", "boost id");
-      if (d.collection === "sessions" && ["fixed", "unconfirmed", "not_fixed", "no_fix_yet", "new_problem", "ended_early"].indexOf(d.data.outcome) < 0) return err("22023", "outcome");
+      if (d.collection === "sessions" && ["fixed", "unconfirmed", "not_fixed", "no_fix_yet", "new_problem", "ended_early", "not_app"].indexOf(d.data.outcome) < 0) return err("22023", "outcome");
     }
     /* Like the database: a record an admin writes in a study they don't belong to is marked, and never counts. */
     delete d.data.outsideStudy;
@@ -290,12 +301,14 @@
       if (d.collection === "sessions" || d.collection === "reports") { nd.triage = old.triage; nd.linkedIssueId = old.linkedIssueId; }
       if (d.collection === "sessions") {
         var keep = Object.assign({}, old);
-        ["helped", "device", "newProblem", "stopgapsShown"].forEach(function (k) { if (k in nd) keep[k] = nd[k]; });
+        ["helped", "device", "newProblem", "stopgapsShown", "helpedPicks", "followUp"].forEach(function (k) { if (k in nd) keep[k] = nd[k]; });
         nd = keep;
       }
       if (d.collection === "boosts") nd.issueId = old.issueId;
     }
     if (d.study_id && ["sessions", "reports", "boosts"].indexOf(d.collection) >= 0) nd.studyId = d.study_id;
+    /* Like the database: a follow-up that ends "not fixed" puts a never-triaged session in the triage queue. */
+    if (d.collection === "sessions" && nd.followUp && nd.followUp.final === "not_fixed" && (!nd.triage || nd.triage.state === "none")) nd.triage = { state: "new" };
     Object.keys(nd).forEach(function (k) { if (nd[k] === undefined) delete nd[k]; });
     d.data = nd; d.updated_at = new Date().toISOString();
     save(); notify(d.collection);
@@ -393,6 +406,10 @@
 
   /* ---------- count-only summaries (test studies left out, as pilot hygiene asks) ---------- */
   function effIssue(d) { return d.data.linkedIssueId || d.data.issueId || null; }
+  /* A session's outcome for counting: the follow-up's final result, else the saved outcome. */
+  function eff(d) { return (d.data.followUp && d.data.followUp.final) || d.data.outcome; }
+  function notApp(d) { return d.collection === "sessions" && eff(d) === "not_app"; }
+  function picks(d) { var l = d.data.helpedPicks || d.data.fixPicks; return Array.isArray(l) ? l.filter(function (p) { return p && p.kind && p.id; }) : []; }
   function secIssues() { return db.docs.filter(function (d) { return d.collection === "issues" && sec(d); }).map(function (d) { return d.id; }); }
   /* Stand-in for the database's md5(): any fixed hash works, because the page never computes it. */
   function fakeHash(t) { var h = 2166136261; t = String(t || ""); for (var i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } return ("00000000" + h.toString(16)).slice(-8); }
@@ -417,7 +434,7 @@
       db.docs.forEach(function (d) {
         var kind = null;
         if (d.collection === "reports" && !sec(d)) kind = "report";
-        else if (d.collection === "sessions") kind = "session";
+        else if (d.collection === "sessions" && !notApp(d)) kind = "session";
         else if (d.collection === "boosts" && !d.data.removed) kind = "boost";
         if (!kind || !counted(d)) return;
         var iid = kind === "boost" ? d.data.issueId : effIssue(d);
@@ -444,23 +461,40 @@
       db.docs.forEach(function (d) {
         var t = null, kind = null;
         if (d.collection === "reports" && !sec(d)) { t = d.data.fix; kind = "report"; }
-        else if (d.collection === "sessions") { t = d.data.helped; kind = "session"; }
+        else if (d.collection === "sessions" && !notApp(d)) { t = d.data.helped; kind = "session"; }
         if (!kind || !counted(d)) return;
-        var iid = effIssue(d), k = norm(t);
-        if (!iid || iid === "new" || !k || NOT_A_FIX.indexOf(k) >= 0 || (!isAdmin() && S.indexOf(iid) >= 0)) return;
-        var o = g[iid + "|" + k] = g[iid + "|" + k] || { issue_id: iid, wa_text: String(t).trim(), wa_key: k, teamSet: {}, reports: 0, sessions: 0, credited: {}, last_at: d.created_at };
-        if (d.study_id) o.teamSet[d.study_id] = 1;
-        o[kind + "s"]++;
+        var iid = effIssue(d);
+        if (!iid || iid === "new" || (!isAdmin() && S.indexOf(iid) >= 0)) return;
         var st = db.docs.find(function (x) { return x.collection === "studies" && x.id === d.study_id; });
-        if (st && (st.data.showName || isAdmin() || isMember(st.id))) o.credited[st.data.name] = 1;
-        if (d.created_at > o.last_at) { o.last_at = d.created_at; o.wa_text = String(t).trim(); }
+        function use(wk, key, text) {
+          var o = g[iid + "|" + wk + "|" + key] = g[iid + "|" + wk + "|" + key] || { issue_id: iid, wa_text: null, wa_key: key, wa_kind: wk, teamSet: {}, reports: 0, sessions: 0, credited: {}, last_at: d.created_at, recs: {} };
+          if (o.recs[d.id]) return;
+          o.recs[d.id] = 1;
+          if (d.study_id) o.teamSet[d.study_id] = 1;
+          o[kind + "s"]++;
+          if (st && (st.data.showName || isAdmin() || isMember(st.id))) o.credited[st.data.name] = 1;
+          if (d.created_at >= o.last_at) o.last_at = d.created_at;
+          if (text && (o.wa_text === null || d.created_at >= o.text_at || !o.text_at)) { o.wa_text = String(text).trim(); o.text_at = d.created_at; }
+        }
+        var k = norm(t);
+        if (k && NOT_A_FIX.indexOf(k) < 0) use("text", k, t);
+        /* Picks (helpedPicks, fixPicks): a team workaround pick adds to the row with the same words (its id is
+           the normalized text, or 'md5:' + its hash); a guide step or stopgap gets its own row. */
+        picks(d).forEach(function (p) {
+          if (p.kind === "step" || p.kind === "stopgap") { use(p.kind, String(p.id), null); return; }
+          if (p.kind !== "team") return;
+          var id = String(p.id), key = id;
+          db.docs.forEach(function (x) { var tx = norm(x.collection === "reports" ? x.data.fix : x.data.helped);
+            if (tx && (id === "md5:" + fakeHash(tx) || id === fakeHash(tx))) key = tx; });
+          use("text", key, null);
+        });
       });
       /* Like the database: hidden ones are left out for everyone. wa_hide stands in for md5(key). */
       function hiddenFor(iid) { var i = db.docs.find(function (x) { return x.collection === "issues" && x.id === iid; });
         return (i && Array.isArray(i.data.hiddenWorkarounds)) ? i.data.hiddenWorkarounds : []; }
       return Object.keys(g).map(function (k) { var o = g[k];
-        return { issue_id: o.issue_id, wa_text: o.wa_text, wa_key: o.wa_key, teams: Object.keys(o.teamSet).length, reports: o.reports, sessions: o.sessions, credited: Object.keys(o.credited), last_at: o.last_at, wa_hide: fakeHash(o.wa_key) }; })
-        .filter(function (r) { var h = hiddenFor(r.issue_id); return h.indexOf("md5:" + r.wa_hide) < 0 && h.indexOf(r.wa_key) < 0; });
+        return { issue_id: o.issue_id, wa_text: o.wa_text, wa_key: o.wa_key, wa_kind: o.wa_kind, teams: Object.keys(o.teamSet).length, reports: o.reports, sessions: o.sessions, credited: Object.keys(o.credited), last_at: o.last_at, wa_hide: fakeHash(o.wa_key) }; })
+        .filter(function (r) { var h = hiddenFor(r.issue_id); return r.wa_kind !== "text" || (h.indexOf("md5:" + r.wa_hide) < 0 && h.indexOf(r.wa_key) < 0); });
     },
     portal_issue_scores: function () {
       var S = secIssues();
@@ -494,7 +528,7 @@
       });
       /* Sessions that ended without a fix, per issue (they count toward breadth, not severity). */
       var unfixed = {};
-      db.docs.filter(function (d) { return d.collection === "sessions" && counted(d) && (d.data.outcome === "not_fixed" || d.data.outcome === "no_fix_yet"); })
+      db.docs.filter(function (d) { return d.collection === "sessions" && counted(d) && (eff(d) === "not_fixed" || eff(d) === "no_fix_yet"); })
         .forEach(function (d) { var iid = effIssue(d); if (!iid || (!isAdmin() && S.indexOf(iid) >= 0)) return; unfixed[iid] = (unfixed[iid] || 0) + 1;
           if (!out[iid]) out[iid] = { issue_id: iid, sum: 0, n: 0, studies: {}, teams: {}, stops: {}, data: {} }; });
       function r1(x) { return Math.round(x * 10) / 10; }
@@ -551,13 +585,23 @@
       return Object.keys(rows).map(function (k) { return rows[k]; }).filter(function (r) { return totals[r.kind] >= 3; })
         .map(function (r) { r.studies_ranked = totals[r.kind]; return r; });
     },
+    /* "Not an app problem" sessions per reason, entry and day. Counts only: no study, no author. */
+    portal_not_app: function () {
+      var g = {};
+      db.docs.filter(function (d) { return notApp(d) && counted(d); }).forEach(function (d) {
+        var r = d.data.notAppReason || "", e = d.data.entryId || "", day = String(d.created_at).slice(0, 10);
+        var o = g[r + "|" + e + "|" + day] = g[r + "|" + e + "|" + day] || { not_app_reason: r, entry_id: e, day: day, n: 0 };
+        o.n++;
+      });
+      return Object.keys(g).map(function (k) { return g[k]; });
+    },
     portal_triage_counts: function () {
       function open(d) { return ((d.data.triage && d.data.triage.state) || "new") === "new"; }
       var s = db.docs.filter(function (d) { return d.collection === "sessions" && counted(d); });
       var r = db.docs.filter(function (d) { return d.collection === "reports" && counted(d); });
       return [{ sessions_7d: s.filter(function (d) { return Date.parse(d.created_at) > Date.now() - 7 * 864e5; }).length,
-        not_fixed_open: s.filter(function (d) { return d.data.outcome === "not_fixed" && open(d); }).length,
-        new_problems_open: s.filter(function (d) { return d.data.outcome === "new_problem" && open(d); }).length,
+        not_fixed_open: s.filter(function (d) { return eff(d) === "not_fixed" && open(d); }).length,
+        new_problems_open: s.filter(function (d) { return eff(d) === "new_problem" && open(d); }).length,
         new_reports_open: r.filter(function (d) { return d.data.issueId === "new" && !d.data.linkedIssueId && open(d) && !sec(d); }).length }];
     },
     portal_triage_items: function () {
@@ -566,8 +610,8 @@
       var out = [];
       db.docs.forEach(function (d) {
         if (!counted(d)) return;
-        if (d.collection === "sessions" && ["not_fixed", "new_problem"].indexOf(d.data.outcome) >= 0 && open(d))
-          out.push({ kind: "session", item_id: d.id, at: d.created_at, entry_id: d.data.entryId, outcome: d.data.outcome, phone: d.data.phone,
+        if (d.collection === "sessions" && ["not_fixed", "new_problem"].indexOf(eff(d)) >= 0 && open(d))
+          out.push({ kind: "session", item_id: d.id, at: d.created_at, entry_id: d.data.entryId, outcome: eff(d), phone: d.data.phone,
             issue_id: d.data.issueId || null, what: d.data.newProblem && d.data.newProblem.what, title: null, symptom: null });
         if (d.collection === "reports" && d.data.issueId === "new" && !d.data.linkedIssueId && open(d) && !sec(d))
           out.push({ kind: "report", item_id: d.id, at: d.created_at, entry_id: null, outcome: null, phone: d.data.setup && d.data.setup.phone,

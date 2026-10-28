@@ -25,14 +25,14 @@
    (docs: unsent answers are kept and sent once connected; code: sign-out and reinstall delete them). The research
    tags the step itself [inference]; how many minutes is enough is untested. */
 window.GUIDE_CONTENT = {
-  version: "2026-10-27",
+  version: "2026-10-28",
   sample: false,
 
   stopgaps: {
     alarm: {
       short: "Set a phone alarm", who: "participant-now",
       text: "Set a phone alarm or calendar reminder at the activity time.",
-      why: "It keeps them on schedule until activity reminders work again.",
+      why: "A phone alarm goes off even when activity reminders don't come, or get lost among other notifications.",
       basis: ["staff", "platform"],
       workaroundFor: ["i03", "i04"]
     },
@@ -70,6 +70,25 @@ window.GUIDE_CONTENT = {
       why: "Low power mode saves battery but may reduce or stop background data, such as location and motion. Keeping them in the study matters more than complete data.",
       basis: ["documented"],
       workaroundFor: ["i10"]
+    },
+    /* For "not an app problem" endings (D25). No workaroundFor: these sessions belong to no issue. */
+    later_today: {
+      short: "Later the same day", who: "staff-now",
+      text: "Tell them a missed activity can still be done later that day, from the Feed or its tab.",
+      why: "Feed cards stay open until midnight (some close at their next time slot). An activity your study shows only through its reminder can't be opened once the reminder is gone.",
+      basis: ["documented", "staff"]
+    },
+    better_time: {
+      short: "A better time", who: "staff-now",
+      text: "If the activity time doesn't suit their day, ask your study lead about changing it.",
+      why: "Schedules are set per group, not per person, so a new time applies to everyone in the group.",
+      basis: ["platform", "documented"]
+    },
+    lighter_load: {
+      short: "A lighter load", who: "staff-now",
+      text: "Ask your study lead whether they can skip some activities for a while, rather than leave the study.",
+      why: "Keeping them in the study matters more than complete data.",
+      basis: ["platform"]
     }
   },
 
@@ -700,9 +719,24 @@ window.GUIDE_CONTENT = {
         { label: "A confirmation", next: "done.when" },
         { label: "An error, or a white screen", next: "done.error" },
         { label: "They closed it before the end", next: "done.partial" },
-        { label: "They don't remember", next: "done.when" }
+        { label: "They don't remember", next: "done.when" },
+        { label: "They didn't do it", next: "done.why" }
       ],
       otherNext: "done.when"
+    },
+    "done.why": {
+      kind: "question", stage: 2, short: "Why didn't they do it?",
+      text: "Ask what got in the way.",
+      why: "Missed activities often come down to forgetting, being away, or finding it too much. Those aren't app problems.",
+      basis: ["staff"],
+      options: [
+        { label: "They forgot", next: "common.forgot" },
+        { label: "They were away or busy", next: "common.away" },
+        { label: "It felt like too much", next: "common.burden" },
+        { label: "No activity reminder came", next: "@reminders" },
+        { label: "They couldn't find or open it", next: "@find_activity" }
+      ],
+      otherNext: "@other"
     },
     "done.when": {
       kind: "question", stage: 2, short: "When and where?",
@@ -1350,7 +1384,7 @@ window.GUIDE_CONTENT = {
     "data.kind": {
       kind: "question", stage: 1, short: "Activities, phone data, or both?",
       text: "What is missing: activities, phone data, or both?",
-      why: "Both missing usually means the app isn't running. Only phone data points to a phone setting. Only activities points to reminders, finding the activity, or saving it.",
+      why: "Both missing usually means the app isn't running. Only phone data points to a phone setting. Only activities points to reminders, finding or saving the activity, or the participant missing it.",
       basis: ["documented", "staff"],
       when: { passiveOnly: false }, skip: "data.which",
       options: [
@@ -1368,7 +1402,10 @@ window.GUIDE_CONTENT = {
       options: [
         { label: "They didn't get activity reminders", next: "@reminders" },
         { label: "They couldn't find or open it", next: "@find_activity" },
-        { label: "They did it, but it isn't showing", next: "@not_done" }
+        { label: "They did it, but it isn't showing", next: "@not_done" },
+        { label: "They forgot", next: "common.forgot" },
+        { label: "They were away or busy", next: "common.away" },
+        { label: "It felt like too much", next: "common.burden" }
       ],
       otherNext: "@other"
     },
@@ -1770,9 +1807,22 @@ window.GUIDE_CONTENT = {
     },
 
     /* ===== shared ===== */
+    /* No text: results are added to this session later (D24), and the page says how to come back to it. */
     "common.unconfirmed": {
-      kind: "end", ending: "unconfirmed",
-      text: "If it didn't work, start a new session on the same problem."
+      kind: "end", ending: "unconfirmed"
+    },
+    /* "Not an app problem" (D25): never counted toward an issue; tallied by notAppReason for the dev meeting.
+       The page itself says it isn't counted, so these carry no text of their own. */
+    "common.forgot": {
+      kind: "end", ending: "not_app", notAppReason: "forgot", issueId: null,
+      stopgaps: ["alarm", "later_today", "better_time"]
+    },
+    "common.away": {
+      kind: "end", ending: "not_app", notAppReason: "away", issueId: null
+    },
+    "common.burden": {
+      kind: "end", ending: "not_app", notAppReason: "burden", issueId: null,
+      stopgaps: ["lighter_load"]
     }
   },
 
@@ -1839,5 +1889,18 @@ window.GUIDE_CONTENT = {
    - New: act.wording (restore answer wording, starter #18), data.which watch option, setup.step Self Help option,
      setup.pconfirm and setup.pfixed (studies with no activities), stop.facts caution.
    - login.upload removed: at the login screen the app collects nothing, and logout clears unsent data (code read).
-   - Kept as before, pending Eden: common.unconfirmed keeps "start a new session" until the page can reopen a
-     session; no option yet for "they forgot or it felt like too much"; the 2-minute audio limit is held back. */
+   - Kept as before, pending a decision: the 2-minute audio limit is held back. (common.unconfirmed lost its "start a new
+     session" text on 2026-10-28, once sessions could be reopened for follow-up.) */
+/* NOT AN APP PROBLEM 2026-10-28 (D25, CONTRACT-2026-10-28.md):
+   - Endings common.forgot, common.away, common.burden (ending "not_app", notAppReason, issueId null).
+   - Offered where staff ask the participant why activities are missing: data.act (only activities missing) and
+     done.why (new; from done.lastscreen "They didn't do it"). Evidence: research v2 E10, "Activities missing for
+     days (forgot, travel, overwhelmed, not using the app)", 3+ teams, one log with 14 entries; P10
+     "Activities only: P2, P3, P4, or engagement". Reminder and find-activity answers stay app paths.
+   - Not offered on "The phone was off, lost or left at home" (data.running): a dead phone can be the app's
+     battery drain, so it stays an app path pending a decision.
+   - Tips (stopgaps), only where a basis exists: alarm (staff backup-alarm practice, research v2 P2; its why is
+     now worded for both uses), later_today (docs: Feed cards open until midnight; a study's session SOP:
+     "use the Assess tab before or after the reminder"), better_time (schedules are per group; staff changed
+     times on request, research v2 E2), lighter_load (D24: keeping the participant outranks complete data).
+     "Away" has no tip: nothing in the records. */

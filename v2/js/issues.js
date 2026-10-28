@@ -15,6 +15,10 @@
   function clip(t, n) { t = String(t || ""); return t.length > n ? t.slice(0, n - 1).trimEnd() + "..." : t; }
   function safeUrl(u) { return /^https?:\/\//i.test(String(u || "").trim()) ? String(u).trim() : ""; }
   function plural(n, one, many) { return n + " " + (n === 1 ? one : (many || one + "s")); }
+  /* Contract 2026-10-28 helpers from core, with fallbacks until the data owner adds them. */
+  const outcomeOf = s => (P.calc.effectiveOutcome ? P.calc.effectiveOutcome(s) : s.outcome);
+  const suggestionUse = id => (P.calc.suggestionUse ? (P.calc.suggestionUse(id) || {}) : {});
+  const contact = () => (P.C && P.C.CONTACT) || "mindlamp@bidmc.harvard.edu";
 
   /* Issues this person may see. The database already hides security issues from non-admins. */
   function visibleIssues() {
@@ -38,7 +42,8 @@
   /* This study's sessions on an issue (readable rows only: own study). */
   function studySessions(studyId, issueId, sinceDays) {
     if (!studyId) return [];
-    return P.calc.sessionsFor({ studyId: studyId, issueId: issueId, sinceDays: sinceDays });
+    /* "Not an app problem" sessions never count toward a problem (contract 2026-10-28). */
+    return P.calc.sessionsFor({ studyId: studyId, issueId: issueId, sinceDays: sinceDays }).filter(s => outcomeOf(s) !== "not_app");
   }
 
   const ROLE_WHO = { lead: "A study lead", rc: "A coordinator", analyst: "A data analyst", dev: "A developer", platform: "Someone on the platform team" };
@@ -206,7 +211,38 @@
       if (!gi) { gi = Object.assign({ teams: 0 }, hit); guide.push(gi); byText.set(k, gi); }
       gi.teams = Math.max(gi.teams, x.teams || 1);
     });
-    return { confirmed: w.confirmed || [], guide: guide, platform: w.platform || [], team: team };
+    /* A guide step or stopgap picked under "What helped" shows here even when the guide doesn't link it to
+       this problem. Same words as one already listed: it shows once, and both picks count. */
+    const use = suggestionUse(i.id);
+    const g = P.guide();
+    Object.keys(use).forEach(k => {
+      const m = /^(step|stopgap):(.+)$/.exec(k);
+      if (!m || !(Number(use[k]) > 0)) return;
+      const idKey = m[1] === "step" ? "nodeId" : "stopgapId";
+      if (guide.some(x => x[idKey] === m[2])) return;
+      const n = ((m[1] === "step" ? g.nodes : g.stopgaps) || {})[m[2]];
+      if (!n || !n.text || n.kind === "question" || n.kind === "end") return;
+      const tk = P.calc.norm(n.text);
+      const same = byText.get(tk);
+      if (same) { (same.alt = same.alt || []).push(k); return; }
+      const gi = { teams: 0, text: n.text };
+      gi[idKey] = m[2];
+      guide.push(gi); byText.set(tk, gi);
+    });
+    return { confirmed: w.confirmed || [], guide: guide, platform: w.platform || [], team: team, use: use };
+  }
+  /* How many teams used a suggestion: the larger of the teams whose own words matched it and the teams that
+     picked it (suggestionUse keys "step:<node>", "stopgap:<id>", "team:<key>"). The larger, not the sum,
+     since one team may have done both. */
+  function usedBy(use, x) {
+    const keys = (x.alt || []).slice();
+    if (x.nodeId) keys.push("step:" + x.nodeId);
+    if (x.stopgapId) keys.push("stopgap:" + x.stopgapId);
+    if (!x.nodeId && !x.stopgapId) {
+      keys.push("team:" + (x.key || P.calc.norm(x.text)));
+      if (x.hide) keys.push("team:" + x.hide, "team:md5:" + x.hide);
+    }
+    return keys.reduce((m, k) => Math.max(m, Number((use || {})[k]) || 0), Number(x.teams) || 0);
   }
   function hasWorkaround(wd) { return !!(wd.confirmed.length || wd.guide.length || wd.platform.length || wd.team.length); }
 
@@ -434,9 +470,13 @@
     const items = [];
 
     w.confirmed.forEach(x => {
+      /* The count shows only when it says more than the names do ("From A, B." already means 2 teams). */
+      const used = usedBy(w.use, x);
+      const from = P.calc.creditFor(i.id, x.text);
+      const named = from === "a team" ? 1 : from.replace(/ and other teams$/, "").split(", ").length;
       const li = el("li", { class: "wa" },
         el("div", {}, x.text, " ", chip("Confirmed by the platform team", "stamp")),
-        el("div", { class: "credit", text: "From " + P.calc.creditFor(i.id, x.text) + "." }),
+        el("div", { class: "credit", text: "From " + from + "." + (used > named ? " Used by " + plural(used, "team") + "." : "") }),
         x.caution ? el("div", { class: "caution", text: x.caution }) : null);
       if (isAdmin) {
         const rm = el("button", { class: "mini", type: "button", text: "Remove confirmation" });
@@ -457,21 +497,25 @@
     w.guide.forEach(x => {
       const open = entry ? el("button", { class: "mini", type: "button", text: "Open in Troubleshoot" }) : null;
       if (open) open.addEventListener("click", () => P.go("guide", { entryId: entry.id }));
+      const used = usedBy(w.use, x);
       items.push(el("li", { class: "wa" },
         el("div", {}, x.text, " ", chip("Troubleshooting step", "stamp")),
-        x.teams ? el("div", { class: "credit", text: plural(x.teams, "team") + " said it helped." }) : null,
+        used ? el("div", { class: "credit", text: "Used by " + plural(used, "team") + "." }) : null,
         open ? el("div", { class: "bar" }, open) : null));
     });
 
     w.platform.forEach(x => {
-      items.push(el("li", { class: "wa" }, el("div", { text: x.text }), el("div", { class: "credit", text: "From the platform team." })));
+      const used = usedBy(w.use, x);
+      items.push(el("li", { class: "wa" }, el("div", { text: x.text }),
+        el("div", { class: "credit", text: "From the platform team." + (used ? " Used by " + plural(used, "team") + "." : "") })));
     });
 
+    /* Credit names only studies that chose to show their name; the rest are counted. */
     w.team.forEach(x => {
-      const n = x.teams || 1, named = (x.credited || []).length;
-      const credit = named
-        ? "From " + x.credited.join(", ") + (n > named ? " and " + plural(n - named, "other team") : "") + "."
-        : "Used by " + plural(n, "team") + ".";
+      const n = Math.max(usedBy(w.use, x), 1), named = (x.credited || []).length;
+      const credit = "Used by " + (named
+        ? x.credited.join(", ") + (n > named ? " and " + plural(n - named, "other team") : "")
+        : plural(n, "team")) + ".";
       const li = el("li", { class: "wa" },
         el("div", {}, x.text, " ", chip("Not confirmed yet", "unconfirmed")),
         el("div", { class: "credit", text: credit }));
@@ -479,11 +523,13 @@
       items.push(li);
     });
 
-    const kids = [items.length ? el("p", { class: "hint", text: "Check that each one fits your study before you use it." }) : null];
+    const kids = [];
     if (i.harmful) kids.push(el("div", { class: "caution", text: "Some of these have a cost. Read them before you use them." }));
+    const mail = contact();
     kids.push(items.length ? el("ul", { class: "clean walist" }, items)
       : i.status === "workaround"
-        ? el("p", { text: "The platform team knows a way around this, but it isn't written up here yet. Ask them for it." })
+        ? el("p", {}, "The platform team knows a way around this that isn't written up yet. Ask them at ",
+          el("a", { href: "mailto:" + mail, text: mail }), ".")
         : el("p", { class: "hint", text: "None known yet. If something helped, add it when you report this problem." }));
     return section("What helps", ...kids);
   }
@@ -645,4 +691,11 @@
    platform team has one and to ask them; the status line adds no claim. One plan line per problem (its own, else
    a proposal's). A proposal's not-now reason reads "Fix on hold". The "two ways" note sits behind
    the info button next to "Does this affect your study?". Names via P.ui.issueName (short name, sentence under it).
-   Picker: no collapse, so every known problem is listed before "Something new"; a search also covers fixed ones. */
+   Picker: no collapse, so every known problem is listed before "Something new"; a search also covers fixed ones.
+
+   2026-10-28 (contract): every item under What helps shows "Used by N teams" from P.calc.suggestionUse picks
+   (the larger of picks and matching free text, never the sum). A guide step or stopgap picked for a problem shows
+   under What helps even when the guide doesn't link it there. Team workaround credit reads "Used by <names>"
+   (it counts users, not authors). The generic "check that each one fits your study" line was dropped (D24).
+   "Workaround known" with nothing written up names the contact as a mailto link. "Not an app problem"
+   sessions don't count toward "Your study: N sessions". */

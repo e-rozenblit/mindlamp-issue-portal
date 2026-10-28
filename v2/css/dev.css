@@ -57,3 +57,10 @@
   #v-dev .dev-table td.num .hint{min-width:0;max-width:none}
   #v-dev .dev-status{min-width:0}
 }
+
+/* Short name, then the full sentence under it (D24) */
+#v-dev .dev-sub{margin-top:2px;font-size:13px;max-width:60ch}
+/* "Not an app problem" tally: feature input, apart from the issue counts (D25) */
+#v-dev .dev-notapp{border-top:1px solid var(--line);padding-top:10px;margin-top:4px;display:grid;gap:4px}
+#v-dev .dev-notapp h4{margin:0;font-size:16px}
+#v-dev .dev-notapp p{margin:0}

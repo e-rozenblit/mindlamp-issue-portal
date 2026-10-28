@@ -10,6 +10,11 @@
   /* Shared helpers from core, with fallbacks until core has them (D24). */
   const info = (content, label) => (P.ui.info ? P.ui.info(content, label) : P.ui.el("details", { class: "more" }, P.ui.el("summary", { text: label || "More" }), content));
   const nameOf = i => (P.ui.issueName ? P.ui.issueName(i) : { title: i.short || i.title || i.id, subtitle: i.short ? (i.title || "") : "" });
+  /* Contract 2026-10-28 helpers from core, with fallbacks until the data owner adds them. */
+  const outcomeOf = s => (P.calc.effectiveOutcome ? P.calc.effectiveOutcome(s) : s.outcome);
+  const openSessions = () => (P.calc.openSessions ? P.calc.openSessions() : []);
+  const CONTACT = (P.C && P.C.CONTACT) || "mindlamp@bidmc.harvard.edu";
+  const mail = () => el("a", { href: "mailto:" + CONTACT, text: CONTACT });
   /* Plan lines a study team can read: "Why not now" only when the problem itself is Not now; a proposal's
      not-now reason on a problem with another status is about one proposed fix, so it says so. */
   function notNowText(plan) {
@@ -78,8 +83,9 @@
 
   /* ---------- home copy ---------- */
   const T = {
-    noRole: "The platform team sets your role when it creates your account.",
-    noStudy: "You are not in a study yet. Ask the platform team to add you.",
+    noRole: ["Ask the platform team at ", " to set your role."],
+    noStudy: ["You aren't in a study yet. Ask the platform team at ", " to add you."],
+    openHead: "Waiting for a result",
     probHead: "Your study's problems this week",
     probHeadLead: "Problems affecting your study",
     probWhat: "One row per problem. A report tells the platform team how a problem affected your study. It starts filled in from your team's troubleshooting sessions.",
@@ -95,7 +101,7 @@
     todoSetup: "Fill in your study setup. Until you do, the guide shows every step, even ones that don't apply.",
     todoGoals: "Rank your study's top goals. Problems that threaten them get more weight in the dev meeting.",
     newHead: "Waiting to be sorted",
-    newNotReady: "The counts aren't available yet. Ask the platform team.",
+    newNotReady: ["The counts aren't available yet. Ask the platform team at ", "."],
     sinceHead: "Since your last visit",
     sinceFirst: "Status changes on problems you troubleshoot, report or mark \"This affects us too\" will show here.",
     sinceEmpty: "No status changes since your last visit."
@@ -120,6 +126,8 @@
       what ? el("p", { class: "hint", text: what }) : null);
   }
   function lastSeenMs() { return S.user.lastSeen ? time(S.user.lastSeen) : 0; }
+  /* A copy line with the contact address linked in the middle: [before, after]. */
+  function withMail(parts) { return [parts[0], mail(), parts[1]]; }
   /* Issues whose plan line already shows under "Since your last visit": the row below doesn't repeat it. */
   let planShown = new Set();
 
@@ -151,6 +159,8 @@
       acts = [action("Open the dev meeting view", "Ranked issues, new items and ideas.", "act:dev", () => P.go("dev", {}))];
       if (S.user.isAdmin) acts.push(action("Sort new problems", "Link each one to an issue on the Admin page.", "act:triage", () => P.go("admin", { focus: "triage" })));
     }
+    /* One filled button: the first action. The rest are outlined (D24 refresh). */
+    acts.slice(1).forEach(a => { const b = a.querySelector("button"); if (b) b.classList.add("ghost"); });
     return el("div", { class: "grid2" }, acts);
   }
 
@@ -158,13 +168,14 @@
   function groupSessions(list) {
     const groups = new Map();
     list.forEach(s => {
-      const iid = effIssue(s);
+      /* "Not an app problem" never counts toward a problem (contract 2026-10-28): it groups by where it started. */
+      const iid = outcomeOf(s) === "not_app" ? "" : effIssue(s);
       const key = iid ? "i:" + iid : "e:" + (s.entryId || "other");
       if (!groups.has(key)) groups.set(key, { key: key, issueId: iid, entryId: s.entryId || "other", sessions: [] });
       groups.get(key).sessions.push(s);
     });
     return Array.from(groups.values()).map(g => {
-      const n = o => g.sessions.filter(s => s.outcome === o).length;
+      const n = o => g.sessions.filter(s => outcomeOf(s) === o).length;
       g.counts = { fixed: n("fixed"), unconfirmed: n("unconfirmed"), not_fixed: n("not_fixed"), no_fix_yet: n("no_fix_yet"),
         new_problem: n("new_problem"), ended_early: n("ended_early") };
       g.newest = g.sessions.reduce((m, s) => Math.max(m, time(s.created)), 0);
@@ -239,12 +250,15 @@
     if (rows.length > shown.length) b.append(el("p", { class: "hint", text: "Showing " + shown.length + " of " + rows.length + ". The rest are under Known problems." }));
 
     const loose = groups.filter(g => !g.issueId);
-    const looseN = loose.reduce((n, g) => n + g.sessions.length, 0);
+    /* "Not an app problem" sessions (D25) aren't an unknown problem: counted on their own line. */
+    const notAppN = loose.reduce((n, g) => n + g.sessions.filter(s => outcomeOf(s) === "not_app").length, 0);
+    const looseN = loose.reduce((n, g) => n + g.sessions.length, 0) - notAppN;
     if (looseN) {
       const open = loose.reduce((n, g) => n + g.counts.not_fixed + g.counts.new_problem, 0);
       b.append(el("p", { class: "hint", text: plural(looseN, "session") + " this week had no known problem." +
         (open ? " The ones that weren't fixed are listed under \"" + T.sentHead + "\"." : " They need no action.") }));
     }
+    if (notAppN) b.append(el("p", { class: "hint", text: plural(notAppN, "session") + " this week ended \"Not an app problem\". They don't count toward any problem." }));
     return b;
   }
   function problemRow(r, sid) {
@@ -254,7 +268,7 @@
     const lines = [];
     if (g) lines.push(el("p", { text: "This week: " + countLine(g) + "." }));
     if (g && g.counts.not_fixed) {
-      const waiting = g.sessions.filter(s => s.outcome === "not_fixed" && (!s.triage || s.triage.state === "new")).length;
+      const waiting = g.sessions.filter(s => outcomeOf(s) === "not_fixed" && (!s.triage || s.triage.state === "new")).length;
       lines.push(el("p", { class: "hint", text: waiting
         ? "The platform team hasn't reviewed " + (waiting === g.counts.not_fixed ? "the unfixed " + (waiting === 1 ? "one" : "ones") : waiting + " of the unfixed ones") + " yet."
         : "The platform team has reviewed the unfixed ones." }));
@@ -288,7 +302,7 @@
     const items = [];
     /* Not-fixed sessions on a known problem are summed up on that problem's row instead (each problem once). */
     S.sessions.filter(s => s.studyId === sid && time(s.created) >= since &&
-      (s.outcome === "new_problem" || (s.outcome === "not_fixed" && !s.issueId)))
+      (s.outcome === "new_problem" || (outcomeOf(s) === "not_fixed" && !s.issueId)))
       .forEach(s => items.push({ kind: "session", rec: s }));
     S.reports.filter(r => r.studyId === sid && r.issueId === "new" && time(r.created) >= since)
       .forEach(r => items.push({ kind: "report", rec: r }));
@@ -340,6 +354,40 @@
     return b;
   }
 
+  /* ---------- the person's own sessions waiting for a result (D24, contract 2026-10-28) ----------
+     Fixes marked "later" during a call, or a fix not yet confirmed. Shown only when there are any. */
+  let showAllOpen = false;
+  function openBlock() {
+    const list = openSessions();
+    if (!list.length) return null;
+    const b = block(T.openHead, "");
+    const ul = el("ul", { class: "clean home-sent home-open" });
+    list.forEach((o, ix) => {
+      const iss = o.issueId ? calc.issue(o.issueId) : null;
+      const n = (o.laterFixes || []).length;
+      const other = o.studyId && o.studyId !== S.studyId ? calc.studyName(o.studyId) : "";
+      ul.append(el("li", { "data-open": o.id, hidden: !showAllOpen && ix >= 5 },
+        el("div", { class: "bar" },
+          el("strong", { text: o.entryId ? entryTitle(o.entryId) : (iss ? nameOf(iss).title : entryTitle("other")) }),
+          el("span", { class: "hint", text: ui.fmtDate(o.created) + (other ? ", " + other : "") })),
+        el("div", { class: "bar" },
+          el("span", { text: n ? plural(n, "fix", "fixes") + " to check" : "Fix not confirmed yet" }),
+          btn("Record the result", "follow:" + o.id, () => P.go("guide", { followUp: o.id }), "btn ghost"))));
+    });
+    b.append(ul);
+    if (!showAllOpen && list.length > 5) {
+      const more = btn("Show all " + list.length, "open:all", () => {
+        showAllOpen = true;
+        ul.querySelectorAll("li[hidden]").forEach(li => { li.hidden = false; });
+        const next = ul.children[5] && ul.children[5].querySelector("button");
+        more.remove();
+        if (next) next.focus();
+      }, "linkbtn");
+      b.append(more);
+    }
+    return b;
+  }
+
   function todoBlock() {
     const sid = S.studyId;
     if (!sid || !calc.canEditStudy(sid)) return null;
@@ -360,7 +408,7 @@
   function newBlock() {
     const b = block(T.newHead, "");
     const c = S.agg.triageCounts;
-    if (!c) { b.append(el("p", { class: "hint", text: S.agg.ready ? "Nothing is waiting." : T.newNotReady })); return b; }
+    if (!c) { b.append(S.agg.ready ? el("p", { class: "hint", text: "Nothing is waiting." }) : el("p", { class: "hint" }, withMail(T.newNotReady))); return b; }
     const waiting = (c.notFixed || 0) + (c.newProblems || 0) + (c.newReports || 0);
     b.append(el("p", { text: waiting
       ? calc.triageLine(c) + ", across all teams. " + plural(c.sessions7 || 0, "session") + " in all in the last 7 days."
@@ -422,12 +470,13 @@
     planShown = new Set();
     const parts = [
       ui.pageHead({ title: copy.title, subtitle: copy.subtitleByRole[key] }),
-      role ? null : el("p", { class: "notice", text: S.user.memberships.length ? T.noRole : T.noStudy }),
+      role ? null : el("p", { class: "notice" }, withMail(S.user.memberships.length ? T.noRole : T.noStudy)),
       actionsFor(role)
     ];
     if (role === "dev" || role === "platform") {
       parts.push(sinceBlock(), newBlock());
     } else {
+      parts.push(openBlock());
       if (role === "lead") parts.push(todoBlock());
       parts.push(sinceBlock());
       if (S.studyId) parts.push(problemsBlock(role), sentBlock());
@@ -466,4 +515,9 @@
    2. Developers get one count line and a button to the dev meeting view; admins also get "Sort new problems".
    3. "What happened to what you sent" reads session.triage {state, at} and linkedIssueId/issueId as admin.js
       writes them at triage. Plan and "Not now" lines come from P.calc.planFor (issue fields + proposal lines).
-   4. Lead home lists each problem once, with its own "Report this for your study" button. */
+   4. Lead home lists each problem once, with its own "Report this for your study" button.
+   5. 2026-10-28 (contract): "Waiting for a result" lists the person's own open sessions (P.calc.openSessions),
+      newest five first with "Show all", each opening P.go("guide", { followUp: id }). Not on the developer or
+      platform view, and only when there are any. One filled action button; the rest are outlined. Counts use P.calc.effectiveOutcome;
+      "not an app problem" sessions never count toward a problem's row. The contact (P.C.CONTACT) is a mailto link
+      in every "ask the platform team" line. */

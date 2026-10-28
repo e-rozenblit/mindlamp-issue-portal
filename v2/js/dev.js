@@ -44,6 +44,15 @@
     return isHttp(url) ? el("a", { href: url.trim(), target: "_blank", rel: "noopener noreferrer", text: text || "Working spec" }) : null;
   }
   function canDev() { return calc.canSeeProposals(); }
+  /* A session's outcome after any follow-up (core helper; plain outcome until core has it). */
+  const outcomeOf = x => (calc.effectiveOutcome ? calc.effectiveOutcome(x) : x.outcome);
+  /* Issue names (D24): the short name as the title, the full sentence as a subtitle. */
+  function nameOf(i) { return ui.issueName ? ui.issueName(i) : { title: (i && i.title) || "", subtitle: "" }; }
+  function issueLabel(id) {
+    if (id === "new") return "Something new";
+    const i = calc.issue(id);
+    return i ? nameOf(i).title : calc.issueTitle(id);
+  }
   /* Pilot hygiene: test studies and admins' runs outside their studies don't count (03-migration 6b). */
   function counted(rec) {
     if (rec.outsideStudy) return false;
@@ -105,7 +114,45 @@
   }
 
   /* ---------- 1. New since the last meeting ---------- */
+  /* Sessions that ended "not an app problem" (D25): counts by reason and by problem picked, kept apart from
+     every issue's score. From core's notAppTally; admins (who read every session) get the same counts here
+     until core has it. Others see nothing until then. */
+  const NOT_APP_REASON = { forgot: "Forgot", away: "Away or busy", burden: "Felt like too much" };
+  function reasonName(id) {
+    if (NOT_APP_REASON[id]) return NOT_APP_REASON[id];
+    const n = Object.values(P.guide().nodes || {}).find(x => x && x.ending === "not_app" && x.notAppReason === id);
+    return (n && (n.reasonLabel || n.short)) || (id === "other" ? "Other" : String(id || "Other"));
+  }
+  function notAppTally(since) {
+    if (calc.notAppTally) { try { return calc.notAppTally(new Date(since).toISOString()); } catch (e) { return null; } }
+    if (!S.user.isAdmin) return null;
+    const t = { total: 0, byReason: {}, byEntry: {} };
+    S.sessions.filter(x => Date.parse(x.created) >= since && counted(x) && outcomeOf(x) === "not_app").forEach(x => {
+      t.total++;
+      const r = x.notAppReason || "other", e = x.entryId || "other";
+      t.byReason[r] = (t.byReason[r] || 0) + 1;
+      t.byEntry[e] = (t.byEntry[e] || 0) + 1;
+    });
+    return t;
+  }
+  function notAppBlock(since) {
+    const t = notAppTally(since);
+    if (!t || !t.total) return null;
+    const line = (map, name) => Object.entries(map || {}).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1])
+      .map(([k, n]) => name(k) + " (" + n + ")").join(", ");
+    return el("div", { class: "dev-notapp", "data-notapp": String(t.total) },
+      el("h4", { text: "Not an app problem: " + plural(t.total, "session") }),
+      el("p", { class: "hint", text: "Not counted toward any issue. Input for feature ideas, such as engagement features." }),
+      el("p", {}, el("b", { text: "Why: " }), line(t.byReason, reasonName) + "."),
+      el("p", {}, el("b", { text: "Problem picked: " }), line(t.byEntry, id => entryTitle(id) || "Other") + "."));
+  }
   function sinceBlock() {
+    const out = sinceItems();
+    const na = canDev() ? notAppBlock(sinceMs()) : null;
+    if (na) out.push(na);
+    return out;
+  }
+  function sinceItems() {
     const since = sinceMs();
     const out = [];
     const tc = S.agg.triageCounts;
@@ -114,10 +161,12 @@
     if (S.user.isAdmin) {
       const all = S.sessions.filter(x => Date.parse(x.created) >= since);
       const allReps = S.reports.filter(r => Date.parse(r.created) >= since && !r.security);
-      const sess = all.filter(counted), reps = allReps.filter(counted);
-      const left = (all.length - sess.length) + (allReps.length - reps.length);
+      /* "Not an app problem" sessions are tallied below, never with the issues (D25). */
+      const real = all.filter(counted), reps = allReps.filter(counted);
+      const sess = real.filter(x => outcomeOf(x) !== "not_app");
+      const left = (all.length - real.length) + (allReps.length - reps.length);
       if (!sess.length && !reps.length) {
-        out.push(ui.empty("No new sessions or reports since " + ui.fmtDate(st.since) + "."));
+        out.push(ui.empty((real.length ? "No sessions or reports on app problems since " : "No new sessions or reports since ") + ui.fmtDate(st.since) + "."));
         if (left) out.push(el("p", { class: "hint", text: plural(left, "test record") + " left out (test studies or admin test runs)." }));
         return out;
       }
@@ -128,19 +177,19 @@
       const groups = new Map();
       const add = (key, label, kind, rec) => {
         const g = groups.get(key) || { label, sessions: 0, notFixed: 0, noFix: 0, reports: 0, teams: new Set() };
-        if (kind === "s") { g.sessions++; if (rec.outcome === "not_fixed" || rec.outcome === "new_problem") g.notFixed++; if (rec.outcome === "no_fix_yet") g.noFix++; }
+        if (kind === "s") { const o = outcomeOf(rec); g.sessions++; if (o === "not_fixed" || o === "new_problem") g.notFixed++; if (o === "no_fix_yet") g.noFix++; }
         else g.reports++;
         const t = calc.teamKey(rec); if (t) g.teams.add(t);
         groups.set(key, g);
       };
       sess.forEach(x => {
         const iid = x.linkedIssueId || x.issueId;
-        if (iid) add(iid, calc.issueTitle(iid), "s", x);
+        if (iid) add(iid, issueLabel(iid), "s", x);
         else add("entry:" + (x.entryId || "other"), "No issue yet: " + entryTitle(x.entryId || "other"), "s", x);
       });
       reps.forEach(r => {
         const iid = r.linkedIssueId || r.issueId;
-        if (iid && iid !== "new") add(iid, calc.issueTitle(iid), "r", r);
+        if (iid && iid !== "new") add(iid, issueLabel(iid), "r", r);
         else add("new:" + r.id, "Something new: " + (r.newTitle || "no title"), "r", r);
       });
       const rows = Array.from(groups.values()).sort((a, b) => (b.notFixed - a.notFixed) || ((b.sessions + b.reports) - (a.sessions + a.reports)));
@@ -163,7 +212,7 @@
     out.push(el("ul", { class: "clean" }, items.map(t => el("li", {},
       (t.kind === "report" ? "Report, something new: " + (t.title || "no title") + (t.symptom ? ". " + t.symptom : "")
         : (t.outcome === "new_problem" ? "Session, something else: " + (t.what || "no description")
-          : "Session, still not fixed: " + (t.issueId ? calc.issueTitle(t.issueId) : entryTitle(t.entryId)))) +
+          : "Session, still not fixed: " + (t.issueId ? issueLabel(t.issueId) : entryTitle(t.entryId)))) +
       (t.phone ? " (" + phoneName(t.phone) + ")" : "") + ", " + ui.ago(t.at) + "."))));
     return out;
   }
@@ -187,7 +236,7 @@
   function statusCell(issue, row) {
     if (!S.user.isAdmin) return el("div", {}, ui.statusChip(issue.status), workaroundLink(issue));
     const wrap = el("div", { class: "list dev-status" });
-    const sel = ui.select(Object.entries(C.STATUS), issue.status, { "aria-label": "Status for " + issue.title });
+    const sel = ui.select(Object.entries(C.STATUS), issue.status, { "aria-label": "Status for " + nameOf(issue).title });
     const msg = statusLine();
     let undoTimer = null;
     function release() { clearTimeout(undoTimer); delete row.dataset.busy; refresh(); }
@@ -215,7 +264,7 @@
        with the status as a platform team workaround that every team sees. */
     function askWorkaround(prev) {
       row.dataset.busy = "1";
-      const text = el("input", { type: "text", maxlength: "300", "aria-label": "Workaround for " + issue.title, placeholder: "What to do for now" });
+      const text = el("input", { type: "text", maxlength: "300", "aria-label": "Workaround for " + nameOf(issue).title, placeholder: "What to do for now" });
       const m = statusLine();
       put(wrap, sel, ui.field("The workaround (every team sees it)", text, "This issue has no workaround yet. Add one to set this status."),
         el("div", { class: "bar" },
@@ -252,8 +301,8 @@
 
   /* What every team sees on the issue: a status note and one plain line on what's planned (D23). */
   function publicSummary(issue, row) {
-    const note = el("input", { type: "text", maxlength: "300", value: issue.statusNote || "", "aria-label": "Status note for " + issue.title });
-    const planned = el("input", { type: "text", maxlength: "200", value: issue.planned || "", "aria-label": "What's planned for " + issue.title });
+    const note = el("input", { type: "text", maxlength: "300", value: issue.statusNote || "", "aria-label": "Status note for " + nameOf(issue).title });
+    const planned = el("input", { type: "text", maxlength: "200", value: issue.planned || "", "aria-label": "What's planned for " + nameOf(issue).title });
     const m = statusLine();
     const d = el("details", {},
       el("summary", { class: "hint", text: "Edit what teams see" }),
@@ -362,9 +411,11 @@
 
   function issueRow(x) {
     const { i, s } = x;
+    const nm = nameOf(i);
     const row = el("tr");
     put(row,
-      el("td", { class: "dev-issue" }, el("span", { class: "dev-title", text: i.title }),
+      el("td", { class: "dev-issue" }, el("span", { class: "dev-title", text: nm.title }),
+        nm.subtitle ? el("div", { class: "hint dev-sub", text: nm.subtitle }) : null,
         i.security ? el("span", {}, " ", ui.chip("Security", "sev hi")) : null,
         canDev() && i.specUrl && isHttp(i.specUrl) ? el("div", {}, specLink(i.specUrl)) : null,
         i.status === "not-now" && (i.notNowReason || i.statusNote) ? el("div", { class: "hint", text: "Why not now: " + (i.notNowReason || i.statusNote) }) : null,
@@ -374,7 +425,7 @@
       el("td", { class: "num", "data-label": "Score" }, el("b", { text: fmt(s.signal) })),
       /* The number in the cell, the words behind an info button, so the table fits (fresh-eyes review). */
       el("td", { class: "num", "data-label": "Severity" }, fmt(s.sev), s.sevFrom !== "reports" ? el("span", { class: "hint", text: " est." }) : null, " ",
-        (() => { const w = calc.sevWords(i, s); return info(el("span", { text: (w.words ? w.words + " " : "") + w.source }), "Severity for " + i.title); })()),
+        (() => { const w = calc.sevWords(i, s); return info(el("span", { text: (w.words ? w.words + " " : "") + w.source }), "Severity for " + nm.title); })()),
       el("td", { class: "num", "data-label": "Teams" }, String(s.teams), (Number(i.teams) || 0) ? el("div", { class: "hint", text: (Number(i.teams) || 0) + " before the portal" }) : null),
       el("td", { class: "num", "data-label": "Sessions", text: String(s.sessions) }),
       el("td", { class: "num", "data-label": "Affects us too", text: String(s.boosts) }),
@@ -417,8 +468,8 @@
     function words(t) { return String(t || "").toLowerCase().split(/\s+/).filter(Boolean); }
     function drawChips() {
       if (!chosen.size) { put(chips, el("span", { class: "hint", text: "None added. Fine for an idea no study has reported." })); return; }
-      put(chips, Array.from(chosen).map(id => el("span", { class: "chip dev-chip" }, calc.issueTitle(id) || id,
-        el("button", { type: "button", class: "dev-x", "aria-label": "Remove " + (calc.issueTitle(id) || id), text: "Remove", onclick: () => {
+      put(chips, Array.from(chosen).map(id => el("span", { class: "chip dev-chip" }, issueLabel(id) || id,
+        el("button", { type: "button", class: "dev-x", "aria-label": "Remove " + (issueLabel(id) || id), text: "Remove", onclick: () => {
           chosen.delete(id); drawChips(); drawResults(); search.focus();
         } }))));
     }
@@ -427,13 +478,13 @@
       const list = S.issues.filter(i => !chosen.has(i.id) && (q.length || !calc.isFixed(i)))
         .filter(i => {
           if (!q.length) return true;
-          const hay = (i.id + " " + i.title + " " + (i.symptom || "") + " " + (i.phrases || []).join(" ")).toLowerCase();
+          const hay = (i.id + " " + (i.short || "") + " " + i.title + " " + (i.symptom || "") + " " + (i.phrases || []).join(" ")).toLowerCase();
           return q.every(w => hay.includes(w));
         })
         .map(i => ({ i, sig: calc.stats(i).signal })).sort((a, b) => b.sig - a.sig).slice(0, q.length ? 8 : 5);
       put(results,
         el("span", { class: "hint", text: q.length ? (list.length ? "Tap to add:" : "No issue matches. Try other words.") : "Top issues, or type to search:" }),
-        list.map(x => el("button", { type: "button", class: "mini dev-add", text: "Add: " + x.i.title + " (score " + fmt(x.sig) + ")", onclick: () => {
+        list.map(x => el("button", { type: "button", class: "mini dev-add", text: "Add: " + nameOf(x.i).title + " (score " + fmt(x.sig) + ")", onclick: () => {
           chosen.add(x.i.id); search.value = ""; drawChips(); drawResults(); search.focus();
         } })));
     }
@@ -620,7 +671,7 @@
         const iss = calc.issue(id);
         if (!iss) return calc.issueTitle(id);
         const s2 = calc.stats(iss);
-        return calc.issueTitle(id) + " (score " + fmt(s2.signal) + ", " + plural(s2.teams, "team") + ")";
+        return issueLabel(id) + " (score " + fmt(s2.signal) + ", " + plural(s2.teams, "team") + ")";
       }).join("; ") || "Contributor need, no study report yet";
       const strip = t => String(t || "").trim().replace(/[.!]+$/, "");
       /* Preview with the label teams actually read (calc.planFor): on an issue that isn't itself Not now,
@@ -641,7 +692,7 @@
           p.owner ? "Owner and reviewer: " + p.owner : "", ui.fmtDate(p.created)].filter(Boolean).join(". ") + "." }),
         el("p", {}, el("b", { text: "Helps: " }), helps),
         el("p", { class: "dev-seen" }, el("b", { text: "Teams see on the issue: " }), seen.length ? seen.join(". ") + "." : "nothing from this card yet."),
-        differs.map(x => el("p", { class: "hint", text: "Teams see a different \"Planned\" line on \"" + x.i.title + "\": \"" + strip(x.f.planned) + "\". Change it under Ranked issues, Edit what teams see." })),
+        differs.map(x => el("p", { class: "hint", text: "Teams see a different \"Planned\" line on \"" + nameOf(x.i).title + "\": \"" + strip(x.f.planned) + "\". Change it under Ranked issues, Edit what teams see." })),
         cond ? el("p", {}, el("b", { text: "Conditions or notes: " }), cond) : null,
         p.test ? el("p", {}, el("b", { text: "Test plan: " }), p.test) : null,
         p.specUrl && isHttp(p.specUrl) ? el("p", {}, specLink(p.specUrl, "Open the working spec")) : null,
@@ -759,7 +810,7 @@
       .sort((a, b) => (b.s.signal - a.s.signal) || (b.s.teams - a.s.teams));
     const rows = st.showAll ? all : all.slice(0, TOP_N);
     keyed(h.tbody, rows, x => x.i.id,
-      x => JSON.stringify([x.i.title, x.i.status, x.i.statusNote, x.i.notNowReason, x.i.planned, x.i.security, x.i.specUrl, x.i.teams,
+      x => JSON.stringify([x.i.title, x.i.short, x.i.status, x.i.statusNote, x.i.notNowReason, x.i.planned, x.i.security, x.i.specUrl, x.i.teams,
         x.s.teams, x.s.portalTeams, x.s.sessions, x.s.sev, x.s.sevN, x.s.goal, x.s.goalN, x.s.boosts, x.s.recent, x.s.signal,
         (st.scores && st.scores[x.i.id]) || null]),
       issueRow);
@@ -783,7 +834,7 @@
     h.propCount.textContent = props.length ? plural(props.length, "proposal") + (waiting ? ", " + waiting + (waiting === 1 ? " still needs" : " still need") + " a full card." : ".") : "";
     if (!props.length) { h.propHost._cache = null; h.propHost.replaceChildren(ui.empty("No proposals yet.")); return; }
     if (h.propHost.firstElementChild && h.propHost.firstElementChild.classList.contains("empty")) h.propHost.replaceChildren();
-    keyed(h.propHost, props, p => p.id, p => String(p.updated) + (calc.issueTitle((p.issues || [])[0]) || ""), proposalItem);
+    keyed(h.propHost, props, p => p.id, p => String(p.updated) + (issueLabel((p.issues || [])[0]) || ""), proposalItem);
   }
 
   P.register({
@@ -821,3 +872,6 @@
    - Public proposal lines (planned, notNowReason) reach other teams through portal_proposal_lines ->
      S.agg.plans -> calc.planFor(issue). `conditions` stays internal. Old `reason` is read as before.
    - render({focus: "signal"}) opens and scrolls to the formula. */
+/* ROUND 2026-10-28 (CONTRACT-2026-10-28.md): issue names through P.ui.issueName (short name, sentence as
+   subtitle). "Not an app problem" sessions are left out of "New since" and tallied apart (.dev-notapp) from
+   calc.notAppTally(sinceIso). Session outcomes read through calc.effectiveOutcome. */

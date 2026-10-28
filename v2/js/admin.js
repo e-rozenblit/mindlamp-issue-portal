@@ -34,11 +34,38 @@
     const e = (P.guide().entries || []).find(x => x.id === entryId);
     return e ? e.title : (entryId || "");
   }
+  /* A team, confirmed or platform workaround's text from its key (the normalized text). */
+  function teamText(key) {
+    const row = (S.agg.workarounds || []).find(w => w.key === key);
+    if (row && row.text) return row.text;
+    for (const i of S.issues) {
+      const hit = (i.workarounds || []).concat((i.confirmedWorkarounds || []).map(w => w.text)).find(t => calc.norm(t) === key);
+      if (hit) return hit;
+    }
+    return String(key);
+  }
+  /* Picked suggestions ({kind, id}) in words, then the person's own words. */
+  function helpedText(own, picks) {
+    const g = P.guide();
+    const words = (Array.isArray(picks) ? picks : []).filter(p => p && p.id).map(p =>
+      p.kind === "step" ? nodeLabel(p.id) : p.kind === "stopgap" ? (((g.stopgaps || {})[p.id] || {}).text || p.id) : teamText(p.id));
+    const t = String(own || "").trim();
+    if (t && !words.some(w => calc.norm(w) === calc.norm(t))) words.push(t);
+    return Array.from(new Set(words)).join("; ");
+  }
   function nodeLabel(id) {
     const n = (P.guide().nodes || {})[id];
     return n ? (n.short || n.text || id) : id;
   }
   function triageState(rec) { return (rec.triage && rec.triage.state) || "new"; }
+  /* A session's outcome after any follow-up (core helper; plain outcome until core has it). */
+  const outcomeOf = s => (calc.effectiveOutcome ? calc.effectiveOutcome(s) : s.outcome);
+  /* An issue's short name (D24), from its id. */
+  function issueLabel(id) {
+    if (id === "new") return "Something new";
+    const i = calc.issue(id);
+    return i && ui.issueName ? ui.issueName(i).title : calc.issueTitle(id);
+  }
   /* Pilot hygiene (03-migration 6b): why a record is left out of the counts, or "". */
   function notCounted(rec) {
     if (rec.outsideStudy) return "Admin test run, not counted";
@@ -95,6 +122,7 @@
     return {
       members: (S.allMemberships || []).filter(m => m.studyId === id).length,
       sessions: S.sessions.filter(x => x.studyId === id).length,
+      notApp: S.sessions.filter(x => x.studyId === id && outcomeOf(x) === "not_app").length,
       reports: S.reports.filter(x => x.studyId === id).length
     };
   }
@@ -110,7 +138,8 @@
           el("h3", { text: s.name || s.id }),
           s.test ? ui.chip("Test study") : null,
           s.showName ? ui.chip("Shows its name") : ui.chip("Shows as \"a team\"", "unconfirmed")),
-        el("p", { class: "hint", text: "Id: " + s.id + ". Members: " + n.members + ". Sessions: " + n.sessions + ". Reports: " + n.reports + "." }),
+        el("p", { class: "hint", text: "Id: " + s.id + ". Members: " + n.members + ". Sessions: " + n.sessions +
+          (n.notApp ? " (" + n.notApp + " not an app problem)" : "") + ". Reports: " + n.reports + "." }),
         s.test ? el("p", { class: "hint", text: "Test study: its sessions, reports and \"This affects us too\" answers are left out of every count other teams see. Its members still see them." }) : null,
         s.notionLink ? (isHttp(s.notionLink)
           ? el("p", {}, el("a", { href: s.notionLink.trim(), target: "_blank", rel: "noopener noreferrer", text: "Notion project page" }))
@@ -302,7 +331,9 @@
       const linked = !!x.linkedIssueId;
       const state = triageState(x);
       if (state === "linked" || state === "dismissed") return false;
-      if (x.outcome === "not_fixed" || x.outcome === "new_problem") return state === "new";
+      /* "Not an app problem" sessions are never sorted: they count only in the Dev meeting tally (D25). */
+      if (outcomeOf(x) === "not_app") return false;
+      if (outcomeOf(x) === "not_fixed" || x.outcome === "new_problem") return state === "new";
       return st.showUnlinked && !x.issueId && !linked;
     }).map(x => ({ kind: "session", rec: x }));
     const reports = S.reports.filter(r => r.issueId === "new" && !r.linkedIssueId &&
@@ -314,7 +345,7 @@
     const r = it.rec;
     if (it.kind === "report") return "Report: something new";
     if (r.outcome === "new_problem") return "Session: new problem";
-    if (r.outcome === "not_fixed") return "Session: still not fixed";
+    if (outcomeOf(r) === "not_fixed") return "Session: still not fixed";
     return "Session with no issue";
   }
 
@@ -333,7 +364,7 @@
     }
     if (it.kind === "session") {
       out.push(facts("Problem picked", entryTitle(r.entryId)));
-      if (r.issueId) out.push(facts("Issue", calc.issueTitle(r.issueId)));
+      if (r.issueId) out.push(facts("Issue", issueLabel(r.issueId)));
       if (r.newProblem) {
         out.push(facts("What they see", r.newProblem.what));
         out.push(facts("Since", r.newProblem.since));
@@ -347,7 +378,7 @@
       const d = r.device || {};
       const dev = [d.model, d.osVersion && "OS " + d.osVersion, d.appVersion && "app " + d.appVersion].filter(Boolean).join(", ");
       out.push(facts("Device", dev));
-      out.push(facts("What helped", r.helped));
+      out.push(facts("What helped", helpedText(r.helped, r.helpedPicks)));
     } else {
       out.push(facts("Title", r.newTitle));
       out.push(facts("What people see", r.newSymptom));
@@ -356,7 +387,7 @@
       const lab = (k, names) => answersOf(r, k).map(a => ui.chip(((C.IMPACT_LABEL || {})[k] || {})[a] || names[a] || a));
       out.push(el("div", { class: "bar" }, lab("stops", C.STOPS), lab("data", C.DATA), lab("cost", C.COST),
         r.security ? ui.chip("Possible security problem", "sev hi") : null));
-      out.push(facts("What helped", r.fix));
+      out.push(facts("What helped", helpedText(r.fix, r.fixPicks)));
     }
     return out.filter(Boolean);
   }
@@ -386,7 +417,7 @@
       const pickHost = el("div");
       let chosen = "";
       const confirmBtn = el("button", { type: "button", class: "btn", text: "Link to this issue", disabled: true, onclick: () => {
-        if (chosen) doPatch(linkPatch(it, chosen), "Linked to " + calc.issueTitle(chosen));
+        if (chosen) doPatch(linkPatch(it, chosen), "Linked to " + issueLabel(chosen));
       } });
       const chosenOut = el("p", { class: "hint", text: "Pick the issue this belongs to." });
       put(actHost, el("div", { class: "list" }, pickHost, chosenOut,
@@ -395,10 +426,10 @@
         P.issuePicker(pickHost, { studyId: r.studyId, showFixed: true, label: "Which issue is this?", onPick(id) {
           if (id === "new") { openNew(); return; }
           chosen = id; confirmBtn.disabled = false;
-          chosenOut.textContent = "Link to: " + calc.issueTitle(id);
+          chosenOut.textContent = "Link to: " + issueLabel(id);
         } });
       } else {
-        const sel = ui.select([["", "Choose an issue"]].concat(S.issues.map(i => [i.id, i.id + ": " + i.title])), "", { "aria-label": "Issue" });
+        const sel = ui.select([["", "Choose an issue"]].concat(S.issues.map(i => [i.id, i.id + ": " + issueLabel(i.id)])), "", { "aria-label": "Issue" });
         sel.addEventListener("change", () => { chosen = sel.value; confirmBtn.disabled = !chosen; });
         pickHost.replaceChildren(sel);
       }
@@ -451,7 +482,7 @@
 
     function buttons() {
       const keep = it.kind === "session" && r.issueId
-        ? el("button", { type: "button", class: "btn ghost", text: "Confirm link: " + calc.issueTitle(r.issueId),
+        ? el("button", { type: "button", class: "btn ghost", text: "Confirm link: " + issueLabel(r.issueId),
             onclick: () => doPatch({ triage: Object.assign({ state: "linked" }, nowStamp()) }, "Marked as sorted") })
         : null;
       return el("div", { class: "bar" },
@@ -494,7 +525,7 @@
       catch (e) { msg.textContent = P.writeError(e); }
     }
     put(card, 
-      el("p", { class: "k", text: issue.title }),
+      el("p", { class: "k", text: issueLabel(issue.id) }),
       el("p", { text: w.text }),
       el("p", { class: "hint", text: "Used by " + plural(w.teams, "team") +
         " (" + plural(w.reports || 0, "report") + ", " + plural(w.sessions || 0, "session") + ")." +
@@ -558,7 +589,7 @@
     sel.addEventListener("change", () => { if (sel.value) card.dataset.busy = "1"; else delete card.dataset.busy; });
     const msg = statusLine();
     put(card, 
-      el("p", { class: "k", text: r.issueId === "new" ? "Something new" : calc.issueTitle(r.issueId) }),
+      el("p", { class: "k", text: issueLabel(r.issueId) }),
       el("p", { class: "hint", text: "Report from " + ui.fmtDate(r.created) + ". Study typed in: " + (r.study || "none") + "." }),
       el("div", { class: "bar" }, sel,
         el("button", { type: "button", class: "btn", text: "Assign to study", onclick: async () => {
@@ -689,3 +720,5 @@
    - "Mark as a test study" / "Count this study again" patches studies/<id> {test}. Test studies and records an
      admin wrote outside their studies (data.outsideStudy, set by the database) are left out of every count.
    - "Remove from study" asks first. Page-head copy is in home.js PAGE_COPY.admin. */
+/* ROUND 2026-10-28: "not an app problem" sessions never enter the queue to sort; study rows count them
+   apart. Triage details show picked suggestions (helpedPicks, fixPicks) in words. Short issue names. */

@@ -27,7 +27,25 @@
     ["move", "New phone, travel, or a new network"], ["none", "Nothing, or not sure"]];
   /* Ending headings when core has no label. Core's C.OUTCOMES wins, so Home, Report and the dev table match. */
   const OUTCOME_FALLBACK = { fixed: "Fixed", unconfirmed: "Fix not confirmed yet", not_fixed: "Still not fixed", no_fix_yet: "No fix yet",
-    new_problem: "New problem", ended_early: "Ended early" };
+    new_problem: "New problem", ended_early: "Ended early", not_app: "Not an app problem" };
+  /* Contract 2026-10-28: helpers from core, with fallbacks until core has them. */
+  const CONTACT = () => (P.C && P.C.CONTACT) || "mindlamp@bidmc.harvard.edu";
+  const effOutcome = s => (P.calc.effectiveOutcome ? P.calc.effectiveOutcome(s) : ((s.followUp && s.followUp.final) || s.outcome));
+  /* Fixes left for later: the contract's `fixes`, else the suggested-fixes marks kept in `path`. */
+  const laterFixesOf = s => (Array.isArray(s.fixes) ? s.fixes.filter(f => f.mark === "later").map(f => f.node)
+    : (s.path || []).filter(p => p.group && p.kind === "action" && p.answer === "later").map(p => p.node));
+  function openSessions() {
+    if (P.calc.openSessions) { try { return P.calc.openSessions() || []; } catch (e) { return []; } }
+    const uid = P.S.user && P.S.user.uid;
+    return (P.S.sessions || []).filter(s => s.author === uid && !s.followUp && (effOutcome(s) === "unconfirmed" || laterFixesOf(s).length))
+      .map(s => ({ id: s.id, created: s.created || s.finishedAt || s.startedAt || "", entryId: s.entryId, issueId: s.issueId, studyId: s.studyId, laterFixes: laterFixesOf(s) }))
+      .sort((a, b) => String(b.created).localeCompare(String(a.created)));
+  }
+  /* "Ask the platform team" always names the address (D25). */
+  function contactLine(before, after) {
+    const a = P.ui.el("a", { href: "mailto:" + CONTACT(), text: CONTACT() });
+    return P.ui.el("span", {}, before || "", a, after || "");
+  }
   /* Basis labels the guide guarantees, whatever core says. */
   const BASIS_FALLBACK = { platform: ["Platform team practice", "What the mindLAMP platform team does when troubleshooting."] };
   const MAP_PREF = "ip-guide-map-full";
@@ -139,6 +157,9 @@
     return null;
   }
   function isFixStep(n) { return !!(n && n.kind === "action" && Number(n.stage) === 3); }
+  function isNoteStep(n) { return !!(n && n.kind === "info" && Number(n.stage) === 3); }
+  /* The suggested-fixes screen opens on a fix, or on a stage-3 info step that leads into fixes (shown there as "Good to know"). */
+  function isFixScreen(id) { const n = nodeOf(id); return isFixStep(n) || (isNoteStep(n) && fixChain(id).ids.length > 0); }
   /* Follow when/skip rules without moving (the chain of fixes is read ahead of the path). */
   function resolveSkip(t, skipped) {
     for (let hops = 0; hops < MAX_HOPS; hops++) {
@@ -153,25 +174,29 @@
   /* The stage-3 fixes for this path: notFixedNext from the first fix while the next step is also a fix.
      safe: in chain order; risky (last resort or can lose data): kept apart, also in chain order. */
   function fixChain(startId) {
-    const ids = [], skipped = [], seen = new Set();
+    const ids = [], notes = [], skipped = [], seen = new Set();
     let t = startId;
-    while (typeof t === "string" && t && t[0] !== "@" && !seen.has(t) && isFixStep(nodeOf(t))) {
-      seen.add(t); ids.push(t);
-      t = resolveSkip(nodeOf(t).notFixedNext, skipped);
+    while (typeof t === "string" && t && t[0] !== "@" && !seen.has(t) && (isFixStep(nodeOf(t)) || isNoteStep(nodeOf(t)))) {
+      seen.add(t);
+      const n = nodeOf(t);
+      if (isFixStep(n)) { ids.push(t); t = resolveSkip(n.notFixedNext, skipped); }
+      else { notes.push(t); t = resolveSkip(n.next, skipped); }
     }
     const risky = id => { const n = nodeOf(id); return !!(n.lastResort || n.dataRisk); };
-    return { ids: ids, safe: ids.filter(id => !risky(id)), risky: ids.filter(risky), skipped: skipped, after: t };
+    return { ids: ids, notes: notes, safe: ids.filter(id => !risky(id)), risky: ids.filter(risky), skipped: skipped, after: t };
   }
   function submitFixes() {
     const id = run.cur;
-    if (run.ended || !isFixStep(nodeOf(id))) return;
+    if (run.ended || !isFixScreen(id)) return;
     const chain = fixChain(id);
     const order = chain.safe.concat(chain.risky);
     const marks = run.fixMarks || {};
     const chosen = order.find(x => marks[x] === "fixed") || "";
     const allTried = order.length && order.every(x => marks[x] === "fixed" || marks[x] === "not_fixed");
     const note = String(run.noteDraft[id] || "").trim().slice(0, P.C.LIMITS.note);
-    chain.skipped.forEach(x => run.skips.push({ at: run.path.length, node: x }));
+    /* A step skipped once is listed once, even after Back and a second Continue. */
+    chain.skipped.forEach(x => { if (!run.skips.some(s => s.node === x)) run.skips.push({ at: run.path.length, node: x }); });
+    chain.notes.forEach(x => run.path.push({ node: x, kind: "info", answer: "next", label: "Good to know", note: "", group: id }));
     order.forEach((x, i) => {
       const m = marks[x] || "later";
       const e = { node: x, kind: "action", answer: m, label: FIX_LABEL[m], note: i === 0 ? note : "", group: id };
@@ -267,7 +292,8 @@
     run.path = run.path.slice(0, index);
     run.skips = run.skips.filter(s => s.at <= index);
     const back = grp ? p.group : p.node;
-    if (p.note) run.noteDraft[back] = p.note;
+    const pn = grp ? (grp.find(q => q.note) || {}).note : p.note;
+    if (pn) run.noteDraft[back] = pn;
     run.fixMarks = {};
     if (grp) grp.forEach(q => { run.fixMarks[q.node] = q.answer; });
     run.cur = back;
@@ -328,6 +354,11 @@
       finishedAt: run.ended.finishedAt
     };
     if (outcome === "unconfirmed") { rec.untestedFix = tried; rec.untestedFixText = tn ? (tn.text || "") : ""; }
+    /* Contract 2026-10-28: each fix marked on the suggested-fixes screen. */
+    const FIX_MARK = { fixed: "worked", not_fixed: "didnt", later: "later" };
+    const fixes = run.path.filter(p => p.group && p.kind === "action").map(p => ({ node: p.node, mark: FIX_MARK[p.answer] || "later" }));
+    if (fixes.length) rec.fixes = fixes;
+    if (outcome === "not_app") rec.notAppReason = String(end.notAppReason || "");
     if (outcome === "not_fixed") rec.device = { model: "", osVersion: "", appVersion: "" };
     if (outcome === "new_problem") rec.newProblem = { what: "", since: "", changed: "" };
     return rec;
@@ -365,12 +396,13 @@
     run.saveState = "";
     saveSession();
   }
-  async function patchFollow(partial) {
-    const path = "sessions/" + run.sessionId;
+  async function patchFollow(partial) { return patchSession(run.sessionId, partial); }
+  async function patchSession(sid, partial) {
+    const path = "sessions/" + sid;
     try { await P.store.patch(path, partial); }
     catch (e) {
       /* Before the migration, patch needs the row loaded. Load it once and try again. */
-      if (e && e.code === "42501" && !(P.S.sessions || []).some(s => s.id === run.sessionId)) {
+      if (e && e.code === "42501" && !(P.S.sessions || []).some(s => s.id === sid)) {
         await P.store.reload("sessions");
         await P.store.patch(path, partial);
       } else { throw e; }
@@ -381,6 +413,7 @@
   const V = {};
   let built = false;
   let pendingEntry = "";
+  let follow = null;   /* the saved session open for follow-up, or null */
   let mq = null;
 
   function build() {
@@ -405,7 +438,7 @@
       if (V.studyOpen) { try { V.studySel.focus(); } catch (e) { /* ignore */ } }
     });
     V.studyLine = el("p", { class: "g-studyline" }, el("span", { text: "Study: " }), V.studyName, " ", V.studyChange);
-    V.noStudy = el("p", { class: "notice", hidden: true, text: "You aren't in a study yet, so nothing here is saved. Ask the platform team to add you." });
+    V.noStudy = el("p", { class: "notice", hidden: true });
     V.notMember = el("p", { class: "notice", hidden: true, text: "Practice run: you aren't in this study, so nothing is saved." });
     V.phoneBtns = C.PHONES.map(([id, label]) => {
       const b = el("button", { type: "button", class: "g-phone", "aria-pressed": "false", "data-phone": id, text: label });
@@ -451,7 +484,10 @@
 
     V.head = pageHead(P.PAGE_COPY.guide);
     foldHead(V.head);
-    sec.replaceChildren(V.head, V.sample, V.testNote, V.start, V.pick, V.run);
+    /* Follow-up later (D24): the person's open sessions, and one session opened to record what happened. */
+    V.openList = el("div", { class: "panel g-open", hidden: true });
+    V.follow = el("div", { class: "g-follow", hidden: true });
+    sec.replaceChildren(V.head, V.sample, V.testNote, V.follow, V.openList, V.start, V.pick, V.run);
 
     try {
       mq = window.matchMedia("(min-width: 900px)");
@@ -518,13 +554,16 @@
 
   function drawAll(focusStep) {
     const inRun = !!run.entryId;
+    const inFollow = !!follow;
     V.sample.hidden = !G().sample;
-    V.start.hidden = inRun;
-    V.pick.hidden = inRun;
-    V.run.hidden = !inRun;
-    if (V.head) V.head.classList.toggle("g-running", inRun);
+    V.follow.hidden = !inFollow;
+    V.start.hidden = inRun || inFollow;
+    V.pick.hidden = inRun || inFollow;
+    V.run.hidden = !inRun || inFollow;
+    if (V.head) V.head.classList.toggle("g-running", inRun || inFollow);
     drawTestNote();
-    if (inRun) drawRun(focusStep); else refreshStart();
+    if (inFollow) { V.openList.hidden = true; drawFollow(focusStep); return; }
+    if (inRun) { V.openList.hidden = true; drawRun(focusStep); } else refreshStart();
   }
   function drawTestNote() {
     const id = run.entryId ? run.studyId : (V.studySel && V.studySel.value) || P.S.studyId;
@@ -545,8 +584,8 @@
     V.studyField.hidden = !ids.length || (ids.length > 1 ? !V.studyOpen : true);
     V.noStudy.hidden = !!ids.length;
     /* Developers and the platform team aren't meant to join a study: for them a run is practice. */
-    V.noStudy.textContent = P.calc.canSeeProposals && P.calc.canSeeProposals() ? "Practice run: nothing here is saved."
-      : "You aren't in a study yet, so nothing here is saved. Ask the platform team to add you.";
+    V.noStudy.replaceChildren(P.calc.canSeeProposals && P.calc.canSeeProposals() ? "Practice run: nothing here is saved."
+      : contactLine("You aren't in a study yet, so nothing here is saved. To be added, email ", "."));
     V.notMember.hidden = !ids.length || !V.studySel.value || P.calc.inStudy(V.studySel.value);
     V.phoneBtns.forEach(b => b.setAttribute("aria-pressed", String(b.dataset.phone === run.phone)));
     const ctx = ctxFor(P.S.studyId, run.phone);
@@ -558,6 +597,7 @@
     V.picker.setItems(items);
     if (pendingEntry) V.picker.setSelected(pendingEntry);
     drawTestNote();
+    drawOpenList();
   }
 
   function drawRun(focusStep) {
@@ -649,10 +689,10 @@
     if (!n || run.cur === MISSING) {
       V.step.replaceChildren(el("div", { class: "panel g-step" },
         el("h3", { tabindex: "-1", "data-focus": "", text: "This step is missing from the guide." }),
-        el("p", { text: "Tell the platform team which problem you picked. Then press Start over." })));
+        el("p", {}, contactLine("Email ", " with the problem you picked, then press Start over."))));
       return;
     }
-    if (isFixStep(n)) { drawFixes(); return; }
+    if (isFixScreen(run.cur)) { drawFixes(); return; }
     const osOnly = n.when && n.when.os ? (Array.isArray(n.when.os) ? n.when.os : [n.when.os]) : null;
     const stageName = String(C.STAGES[n.stage] || "").toLowerCase();
     const backIdx = lastAnswerIndex();
@@ -776,6 +816,11 @@
       meta,
       el("h3", { tabindex: "-1", "data-focus": "", text: "Suggested fixes" }),
       el("p", { class: "g-fixsub", text: "Least disruptive first. Mark each one you try." }),
+      chain.notes.length ? el("div", { class: "g-block g-goodtoknow" }, el("div", { class: "k", text: "Good to know" }),
+        el("ul", { class: "clean" }, chain.notes.map(x => { const n = nodeOf(x); return el("li", { "data-node": x },
+          el("p", {}, n.short && n.text !== n.short ? el("b", { text: n.short + ": " }) : null, n.text || n.short || ""),
+          n.caution ? el("div", { class: "caution", role: "note" }, el("p", { text: n.caution })) : null,
+          whyBlock(n.why, n.basis)); }))) : null,
       chain.safe.length ? el("ol", { class: "g-fixlist" }, chain.safe.map(card)) : null,
       chain.risky.length ? el("div", { class: "g-lastresort" },
         el("h4", { class: "g-lr-head", text: anyRisk ? "Last resort: can lose data" : "Last resort" }),
@@ -806,9 +851,10 @@
      questions come first, while the participant is still on the call. */
   function triedSteps() { return run.path.filter(p => p.kind === "action" && p.answer !== "later"); }
   /* The confirm step that ended in "not confirmed yet": the last answered question that went there. */
-  function checkLaterText() {
-    for (let i = run.path.length - 1; i >= 0; i--) {
-      const p = run.path[i];
+  function checkLaterText(path) {
+    path = path || run.path;
+    for (let i = path.length - 1; i >= 0; i--) {
+      const p = path[i];
       if (p.kind !== "question" || typeof p.answer !== "number") continue;
       const n = nodeOf(p.node);
       const o = n && (n.options || [])[p.answer];
@@ -849,9 +895,9 @@
       const notYet = run.path.filter(p => p.group && p.answer === "later");
       if (notYet.length) parts.push(el("div", { class: "g-block g-later" }, el("div", { class: "k", text: "Not tried yet" }),
         el("ul", { class: "clean" }, notYet.map(p => el("li", { text: stepName(nodeOf(p.node), p.node) })))));
-      /* The content line is about a fix that seemed to work. With only untried fixes, say how to record the rest. */
-      if (end.text && (fn || later || !notYet.length)) parts.push(el("p", { text: end.text }));
-      else if (notYet.length) parts.push(el("p", { text: "Once they've tried the rest, start a new session on this problem to record what happened." }));
+      /* Results are added to this session later (D24), so a content line about starting a new session doesn't apply. */
+      if (end.text && !/new session/i.test(end.text)) parts.push(el("p", { text: end.text }));
+      if (run.saveState !== "local") parts.push(el("p", { class: "g-comeback", text: "To record how it went, open this session again from Start here or Troubleshoot." }));
     }
 
     if (outcome === "not_fixed") {
@@ -901,16 +947,21 @@
       if (sg.length) parts.push(stopgapBlock(sg));
     }
 
-    parts.push(el("div", { class: "g-row" }, btn("Start a new session", "btn", () => startOver(false))));
+    if (outcome === "not_app") {
+      if (end.text) parts.push(el("p", { text: end.text }));
+      parts.push(el("p", { class: "g-notapp", text: "This isn't counted as an app problem. The platform team looks at these when thinking about new features." }));
+      if (sg.length) parts.push(stopgapBlock(sg, "What may help"));
+    }
+
+    /* "Start a new session" sits in the summary above, once. */
     V.step.replaceChildren(el("div", { class: "panel g-step g-end g-end-" + outcome }, parts));
     drawSaveStatus();
   }
 
-  /* "What helped" (D24): pick one of this problem's existing suggestions, or write your own. A pick is saved
-     as that suggestion's exact text in `helped`, which Known problems and portal_workarounds count by
-     normalized text, so it adds to "used by N teams" (a guide step or stopgap shows "N teams said it helped").
-     One answer per session, because the counts read one `helped` text per session. */
-  function helpSuggestions(sg) {
+  /* "What helped" (D24, contract 2026-10-28): tick any of this problem's existing suggestions and/or write your own.
+     Ticks are saved as helpedPicks ({ kind, id }), which P.calc.suggestionUse and portal_workarounds count per team;
+     the typed text stays in `helped`. */
+  function helpSuggestions(sg, issueId, tried) {
     const out = [];
     const seen = new Set();
     const add = (key, text, label, meta) => {
@@ -921,8 +972,7 @@
     };
     /* Stopgaps and other teams' workarounds first: on these endings the steps tried didn't fix it. */
     sg.forEach(s => add("sg:" + s.id, s.text, s.text, ""));
-    const iid = issueIdOf(run);
-    const iss = iid ? P.calc.issue(iid) : null;
+    const iss = issueId ? P.calc.issue(issueId) : null;
     let w = null;
     if (iss && P.calc.workarounds) { try { w = P.calc.workarounds(iss); } catch (e) { w = null; } }
     if (w) {
@@ -932,49 +982,46 @@
       (w.team || []).forEach(x => add("wa:" + (x.key || P.calc.norm(x.text || "")), x.text, x.text,
         "Used by " + (x.teams || 1) + ((x.teams || 1) > 1 ? " teams" : " team")));
     }
-    triedSteps().forEach(p => { const n = nodeOf(p.node); if (n && n.text) add("node:" + p.node, n.text, n.short || n.text, "Tried on this call"); });
+    (tried || []).forEach(p => { const n = nodeOf(p.node); if (n && n.text) add("node:" + p.node, n.text, n.short || n.text, "Tried"); });
     return out;
   }
-  function helpedBlock(sg) {
+  const PICK_KIND = { sg: "stopgap", node: "step", wa: "team" };
+  function pickOf(key) { const i = key.indexOf(":"); return { kind: PICK_KIND[key.slice(0, i)] || "team", id: key.slice(i + 1) }; }
+  /* The picker alone (endings and follow-up share it). draft: { picks: {key: true}, helpedOwn }; onChange saves the draft. */
+  function helpedPicker(list, draft, onChange) {
     const { el } = P.ui;
-    if (run.saveState === "local") return null;  /* a practice run has nothing to add to */
-    const fu = run.follow.draft;
-    const list = helpSuggestions(sg);
-    /* Older runs kept only the typed text. */
-    if (!fu.helpedPick && fu.helped) { fu.helpedOwn = fu.helped; fu.helpedPick = "own"; }
-    const name = "g-helped-" + String(run.startedAt || "run").replace(/\W/g, "");
-    const radios = [];
-    const radio = (key, label, meta) => {
-      const r = el("input", { type: "radio", name: name, value: key });
-      r.checked = fu.helpedPick === key;
-      r.addEventListener("change", () => { if (r.checked) { fu.helpedPick = key; saveRun(); } });
-      radios.push(r);
-      return el("label", { class: "g-pickrow" }, r, el("span", {}, label, meta ? el("span", { class: "hint g-pickmeta", text: " " + meta }) : null));
-    };
+    if (!draft.picks || typeof draft.picks !== "object") draft.picks = {};
+    /* Older drafts kept one pick, or only the typed text. */
+    if (draft.helpedPick && draft.helpedPick !== "own" && draft.helpedPick !== "none") { draft.picks[draft.helpedPick] = true; delete draft.helpedPick; }
+    if (!draft.helpedOwn && draft.helped) draft.helpedOwn = draft.helped;
     const own = el("textarea", { maxlength: String(P.C.LIMITS.helped), rows: "2", "aria-label": list.length ? "Something else that helped" : "What helped" });
-    own.value = fu.helpedOwn || "";
-    own.addEventListener("input", () => {
-      fu.helpedOwn = own.value;
-      if (own.value.trim()) { fu.helpedPick = "own"; radios.forEach(r => { r.checked = r.value === "own"; }); }
-      saveRun();
-    });
-    const ownHint = el("p", { class: "hint", text: "Other teams see this. No names, IDs or other details that identify a person." });
+    own.value = draft.helpedOwn || "";
+    own.addEventListener("input", () => { draft.helpedOwn = own.value; onChange(); });
+    const ownHint = "Other teams see this. No names, IDs or other details that identify a person.";
     const box = list.length
       ? el("fieldset", { class: "g-helped" },
         el("legend", { text: "What helped, if anything?" }),
         el("div", { class: "g-picklist" },
-          list.map(x => radio(x.key, x.label, x.meta)),
-          radio("own", "Something else:", ""),
-          el("div", { class: "g-own" }, own, ownHint),
-          radio("none", "Nothing so far", "")))
-      : el("div", { class: "g-helped" }, P.ui.field("What helped, if anything? (optional)", own, ownHint.textContent));
-    const collect = () => {
-      const pick = list.length ? (fu.helpedPick || "") : "own";
-      const hit = list.find(x => x.key === pick);
-      const text = pick === "own" ? own.value.trim() : hit ? hit.text : "";
-      return { helped: text, stopgapsShown: sg.map(s => s.id) };
-    };
-    return el("div", { class: "g-block" }, box,
+          list.map(x => {
+            const c = el("input", { type: "checkbox", value: x.key });
+            c.checked = !!draft.picks[x.key];
+            c.addEventListener("change", () => { if (c.checked) draft.picks[x.key] = true; else delete draft.picks[x.key]; onChange(); });
+            return el("label", { class: "g-pickrow" }, c, el("span", {}, x.label, x.meta ? el("span", { class: "hint g-pickmeta", text: " " + x.meta }) : null));
+          }),
+          el("div", { class: "g-own" }, P.ui.field("Something else", own, ownHint))))
+      : el("div", { class: "g-helped" }, P.ui.field("What helped, if anything? (optional)", own, ownHint));
+    const collect = () => ({
+      helped: own.value.trim(),
+      helpedPicks: list.filter(x => draft.picks[x.key]).map(x => pickOf(x.key))
+    });
+    return { box: box, collect: collect, keys: list.map(x => x.key) };
+  }
+  function helpedBlock(sg) {
+    const { el } = P.ui;
+    if (run.saveState === "local") return null;  /* a practice run has nothing to add to */
+    const picker = helpedPicker(helpSuggestions(sg, issueIdOf(run), triedSteps()), run.follow.draft, saveRun);
+    const collect = () => Object.assign(picker.collect(), { stopgapsShown: sg.map(s => s.id) });
+    return el("div", { class: "g-block" }, picker.box,
       sendRow("helped", "Save what helped", "Update what helped", collect, "Saved to the session."));
   }
 
@@ -1003,10 +1050,10 @@
     V.sendBtns = (V.sendBtns || []).concat([b]);
     return el("div", { class: "g-row" }, b, msg);
   }
-  function stopgapBlock(list) {
+  function stopgapBlock(list, head) {
     const { el } = P.ui;
     return el("div", { class: "g-block" },
-      el("div", { class: "k", text: "In the meantime" }),
+      el("div", { class: "k", text: head || "In the meantime" }),
       el("ul", { class: "g-stopgaps" }, list.map(s => el("li", {},
         el("p", { class: "g-sg-text", text: s.text }),
         whyBlock(s.why, s.basis)))));
@@ -1045,6 +1092,7 @@
         (hasIssue ? " Changes to this problem show on Start here." : "");
       case "no_fix_yet": return "Saved to " + P.calc.studyName(run.studyId) + ".";
       case "new_problem": return "Sent to the platform team. They will sort it into a known problem or a new one.";
+      case "not_app": return "Saved to " + P.calc.studyName(run.studyId) + ".";
       default: return "Saved to " + P.calc.studyName(run.studyId) + ".";
     }
   }
@@ -1055,16 +1103,169 @@
     const kids = [];
     if (st === "saved") kids.push(el("p", { class: "g-ok", text: savedText(run.ended.outcome) }));
     else if (st === "saving" || st === "") kids.push(el("p", { class: "hint", text: "Saving the session..." }));
-    else if (st === "local") kids.push(el("p", { class: "notice", text: run.studyId || P.calc.myStudies().length
+    else if (st === "local") kids.push(el("p", { class: "notice" }, run.studyId || P.calc.myStudies().length
       ? "Practice run: nothing was saved. You aren't a member of this study."
       : (P.calc.canSeeProposals && P.calc.canSeeProposals() ? "Practice run: nothing was saved."
-        : "Not saved: you aren't in a study yet. Ask the platform team to add you.") }));
+        : contactLine("Not saved: you aren't in a study yet. To be added, email ", "."))));
     else if (st === "failed") {
       kids.push(el("p", { class: "notice warn", text: "Couldn't save the session. " + (run.saveError || "") }));
       kids.push(btn("Try saving again", "btn", () => saveSession()));
     }
     V.saveLine.replaceChildren(...kids);
     (V.sendBtns || []).forEach(b => { if (b.isConnected) b.hidden = st === "local"; });
+  }
+
+  /* ---------- follow-up later (D24; contract 2026-10-28) ---------- */
+  /* P.go("guide", { followUp: sessionId }) opens one of the signed-in person's saved sessions: the fixes left for
+     later (and the one that seemed to help), a mark for each, a final result, and what helped. Saved with
+     store.patch as followUp (+ helpedPicks / helped). Nothing here changes the run in progress. */
+  const FOLLOW_MARKS = [["worked", "Worked"], ["didnt", "Didn't work"], ["not_tried", "Not tried"]];
+  const FINALS = ["fixed", "not_fixed", "unconfirmed"];
+  function followSession(id) {
+    const uid = P.S.user && P.S.user.uid;
+    const s = (P.S.sessions || []).find(x => x.id === id);
+    return s && (!s.author || s.author === uid) ? s : null;
+  }
+  function followItems(s) {
+    const ids = [];
+    if (s.untestedFix) ids.push(s.untestedFix);
+    /* A second follow-up keeps every fix from the first, so saving again doesn't drop a result. */
+    ((s.followUp && s.followUp.results) || []).map(r => r.node).concat(laterFixesOf(s)).forEach(x => { if (!ids.includes(x)) ids.push(x); });
+    return ids.filter(x => nodeOf(x));
+  }
+  function openFollow(id) {
+    follow = { id: id, draft: { marks: {}, final: "", picks: {}, helpedOwn: "" }, ready: false, msg: "" };
+  }
+  function closeFollow() {
+    follow = null;
+    V.follow.replaceChildren();
+    drawAll(false);
+    try { window.scrollTo(0, 0); } catch (e) { /* ignore */ }
+  }
+  function drawFollow(focus) {
+    const { el } = P.ui;
+    const s = followSession(follow.id);
+    const back = btn("Back", "btn ghost g-backstep", () => closeFollow());
+    if (!s) {
+      const loading = !(P.S.loaded && P.S.loaded.sessions);
+      V.follow.replaceChildren(el("div", { class: "panel g-followup" }, el("div", { class: "g-meta" }, back),
+        el("h3", { tabindex: "-1", "data-focus": "", text: "Follow up" }),
+        el("p", { class: loading ? "hint" : "notice", text: loading ? "Loading the session..." : "This session isn't available. Only the person who ran it can follow up." })));
+      return;
+    }
+    const d = follow.draft;
+    if (!follow.ready) {
+      /* Start from what is already saved, so a second follow-up updates the first. */
+      const fu = s.followUp || {};
+      (fu.results || []).forEach(r => { d.marks[r.node] = r.mark; });
+      d.final = fu.final || "";
+      d.helpedOwn = s.helped || "";
+      (s.helpedPicks || []).forEach(x => { const pre = x.kind === "stopgap" ? "sg:" : x.kind === "step" ? "node:" : "wa:"; d.picks[pre + x.id] = true; });
+      follow.ready = true;
+    }
+    const e = entryById(s.entryId);
+    const items = followItems(s);
+    const when = s.created || s.finishedAt || s.startedAt || "";
+    const facts = el("dl", { class: "g-facts" },
+      el("div", {}, el("dt", { text: "Problem" }), el("dd", { text: (e && e.title) || "Problem" })),
+      el("div", {}, el("dt", { text: "Date" }), el("dd", { text: when ? P.ui.fmtDate(when) : "" })),
+      el("div", {}, el("dt", { text: "Study" }), el("dd", { text: s.studyId ? P.calc.studyName(s.studyId) : "" })),
+      el("div", {}, el("dt", { text: "Phone" }), el("dd", { text: phoneName(s.phone) })));
+    const later = checkLaterText(s.path || []);
+    const card = x => {
+      const n = nodeOf(x);
+      const name = "g-fu-" + String(x).replace(/\W/g, "_");
+      const title = n.short || n.text || x;
+      return el("li", { class: "g-fix" + (n.lastResort || n.dataRisk ? " risk" : ""), "data-node": x },
+        x === s.untestedFix ? el("div", { class: "g-meta" }, P.ui.chip("Seemed to help")) : null,
+        el("h4", { text: title }),
+        n.short && n.text && n.text !== n.short ? el("p", { text: n.text }) : null,
+        n.dataRisk ? el("div", { class: "caution", role: "note" }, el("p", {}, el("b", { text: DATA_RISK }))) : null,
+        el("fieldset", { class: "g-marks" }, el("legend", { class: "fm-sr", text: "What happened: " + title }),
+          FOLLOW_MARKS.map(([k, label]) => {
+            const r = el("input", { type: "radio", name: name, value: k });
+            r.checked = d.marks[x] === k;
+            r.addEventListener("change", () => { if (r.checked) d.marks[x] = k; });
+            return el("label", { class: "g-mark g-mark-" + k }, r, el("span", { text: label }));
+          })));
+    };
+    const finalSet = el("fieldset", { class: "g-final" }, el("legend", { text: "Result" }),
+      el("div", { class: "g-marks" }, FINALS.map(k => {
+        const r = el("input", { type: "radio", name: "g-fu-final", value: k });
+        r.checked = d.final === k;
+        r.addEventListener("change", () => { if (r.checked) d.final = k; });
+        return el("label", { class: "g-mark g-mark-" + k }, r, el("span", { text: outcomeLabel(k) }));
+      })));
+    /* The fixes above get their own mark, so they aren't offered again here. */
+    const tried = (s.path || []).filter(p => p.kind === "action" && p.answer !== "later" && !items.includes(p.node));
+    const picker = helpedPicker(helpSuggestions(stopgapsOf(s.stopgapsShown || []), s.issueId, tried), d, () => {});
+    const msg = el("p", { class: "hint", role: "status", text: follow.msg || "" });
+    const again = el("div", { class: "g-row" });
+    const showAgain = () => {
+      again.replaceChildren();
+      if (follow && follow.savedFinal === "not_fixed" && e) again.append(btn("Troubleshoot again", "btn ghost", () => {
+        follow = null;
+        V.follow.replaceChildren();
+        P.go("guide", { entryId: s.entryId });
+      }));
+    };
+    const save = btn(s.followUp ? "Update follow-up" : "Save follow-up", "btn g-fusave", async () => {
+      if (!d.final) { msg.textContent = "Choose a result first."; return; }
+      const partial = Object.assign({
+        followUp: { at: new Date().toISOString(), results: items.map(x => ({ node: x, mark: d.marks[x] || "not_tried" })), final: d.final }
+      }, picker.collect());
+      /* An earlier pick that isn't offered here (for example a fix now listed above) stays saved. */
+      const offered = new Set(picker.keys || []);
+      const keyOf = x => (x.kind === "stopgap" ? "sg:" : x.kind === "step" ? "node:" : "wa:") + x.id;
+      (s.helpedPicks || []).filter(x => x && x.kind && x.id && !offered.has(keyOf(x)))
+        .forEach(x => { if (!partial.helpedPicks.some(y => y.kind === x.kind && y.id === x.id)) partial.helpedPicks.push(x); });
+      save.disabled = true; msg.textContent = "Saving...";
+      try {
+        await patchSession(s.id, partial);
+        follow.msg = isDemo() ? "Demo: saved in this browser only." : "Saved.";
+        follow.savedFinal = d.final;
+        msg.textContent = follow.msg; save.textContent = "Update follow-up";
+        showAgain();
+      } catch (err) { msg.textContent = P.writeError(err); }
+      save.disabled = false;
+    });
+    V.follow.replaceChildren(el("div", { class: "panel g-followup" },
+      el("div", { class: "g-meta" }, back),
+      el("h3", { tabindex: "-1", "data-focus": "", text: "Follow up" }),
+      facts,
+      later ? el("div", { class: "g-block g-later" }, el("div", { class: "k", text: "Still to check" }), el("p", { text: later })) : null,
+      items.length ? el("div", { class: "g-block" }, el("div", { class: "k", text: "Fixes" }), el("ol", { class: "g-fixlist" }, items.map(card))) : null,
+      finalSet,
+      el("div", { class: "g-block" }, picker.box),
+      el("div", { class: "g-row" }, save, msg),
+      again));
+    showAgain();
+    if (focus) { const h = V.follow.querySelector("[data-focus]"); if (h) { try { h.focus({ preventScroll: true }); } catch (err) { /* ignore */ } } }
+  }
+  /* Troubleshoot's start screen: this person's sessions still waiting for a result (same words as Start here). */
+  function drawOpenList() {
+    const { el } = P.ui;
+    if (!V.openList) return;
+    const list = run.entryId || follow ? [] : openSessions();
+    V.openList.hidden = !list.length;
+    if (!list.length) { V.openList.replaceChildren(); return; }
+    const row = o => {
+        const e = entryById(o.entryId);
+        const n = (o.laterFixes || []).length;
+        const b = btn("Record the result", "btn ghost g-fuopen", () => P.go("guide", { followUp: o.id }));
+        b.setAttribute("data-follow", o.id);
+        return el("li", { class: "g-openrow" },
+          el("span", {}, el("b", { text: (e && e.title) || "Problem" }),
+            el("span", { class: "hint", text: " " + [o.created ? P.ui.fmtDate(o.created) : "", n ? n + (n > 1 ? " fixes" : " fix") + " to check" : "", o.studyId && P.calc.myStudies().length > 1 ? P.calc.studyName(o.studyId) : ""].filter(Boolean).join(" · ") })),
+          b);
+    };
+    /* A long list would push the problem picker down during a call: the newest three show, the rest fold. */
+    const top = list.slice(0, 3), rest = list.slice(3);
+    V.openList.replaceChildren(...[
+      el("h3", { text: "Waiting for a result" }),
+      el("ul", { class: "g-openlist" }, top.map(row)),
+      rest.length ? el("details", { class: "g-openmore" }, el("summary", { text: rest.length + " more" }),
+        el("ul", { class: "g-openlist" }, rest.map(row))) : null].filter(Boolean));
   }
 
   /* ---------- flow map (pure: draws only from its arguments) ---------- */
@@ -1237,10 +1438,13 @@
       if (!built) { build(); drawAll(false); }
       if (params === null) {
         /* Data, summary or study refresh: update lists and statuses only. Never wipe input. */
+        if (follow) { if (!follow.ready) drawFollow(false); if (run.ended) resumeSave(); return; }
         if (!run.entryId) refreshStart();
         else { fillIssueBox(); resumeSave(); }
         return;
       }
+      if (params && params.followUp) { openFollow(params.followUp); drawAll(true); return; }
+      if (follow) { follow = null; V.follow.replaceChildren(); drawAll(false); }
       if (params && params.entryId && entryById(params.entryId)) {
         const busy = run.entryId && !run.ended && run.path.length;
         if (busy) { P.ui.toast("Finish this session first, or press Start over."); }
@@ -1276,7 +1480,13 @@
       it under "Still to check", taken from the question whose answer led to common.unconfirmed.
    7. P.guideMap(host, {entry, nodes, path, currentId, skips, ended, entries, full}) is exposed, read-only.
       full: false shows the path taken; true adds every branch and every step for the problem.
-   8. Basis tag "platform" shows as "Platform team practice", from core if core has it, else from this file. */
+   8. Basis tag "platform" shows as "Platform team practice", from core if core has it, else from this file.
+   9. Contract 2026-10-28: the session record adds `fixes` ([{node, mark: worked|didnt|later}]) when the path went
+      through the suggested-fixes screen, and `notAppReason` on a not_app ending. "What helped" saves ticks as
+      helpedPicks ({kind: step|stopgap|team, id}) and typed text as `helped`. P.go("guide", { followUp: id }) opens
+      the person's own saved session; it patches followUp (+ helpedPicks / helped) only.
+   10. A stage-3 info step that sits in a chain of stage-3 fixes (or leads into one) shows on the suggested-fixes
+      screen under "Good to know", and is saved in the path as kind "info" with the screen's group. */
 
 /* INTEGRATED (pass 2, 2026-10-28): core's C.BASIS has the "platform" key ("Platform team practice"); the
    page-head copy is in home.js; P.demo flags demo mode; test studies are left out of every count in 03;

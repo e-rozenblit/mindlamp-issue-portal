@@ -47,6 +47,9 @@
   let tickTouched = false;   // the person changed ticks, or ticks came from params
   let knownSessions = new Set();
   let stepSkip = new Set();  // guide steps the person unticked under "What fixed it"
+  let pickOn = new Set();    // existing suggestions the person ticked under "What fixed it" ("kind:id")
+  let pickOff = new Set();   // ones the person unticked (a tick from the sessions stays off)
+  let pickAuto = new Set();  // ones the ticked sessions said helped
   let fromSessions = false;
   let sending = false;
   let scopeOpen = false;     // the person asked to change the "how many and how long" answers
@@ -92,6 +95,13 @@
     const want = Array.isArray(v) ? v.map(String) : [String(v || "unsure")];
     f.attr.querySelectorAll("input").forEach(i => { i.checked = want.includes(i.value); });
     if (!f.attr.querySelector("input:checked")) { const u = f.attr.querySelector("input[value=unsure]"); if (u) u.checked = true; }
+  }
+  /* A session's outcome after any follow-up (core helper; plain outcome until core has it). */
+  const outcomeOf = s => (P.calc.effectiveOutcome ? P.calc.effectiveOutcome(s) : s.outcome);
+  /* An issue's short name (D24). */
+  function issueLabel(id) {
+    const i = id && id !== "new" ? P.calc.issue(id) : null;
+    return i && P.ui.issueName ? P.ui.issueName(i).title : P.calc.issueTitle(id);
   }
   function entryTitle(id) {
     const e = ((P.guide().entries) || []).find(x => x.id === id);
@@ -223,14 +233,14 @@
         countLine(list); prefill(); saveDraftSoon();
       });
       const detail = s.outcome === "fixed" && s.fixedByText ? "Fixed by: " + s.fixedByText
-        : s.outcome === "unconfirmed" && s.untestedFixText ? "Seemed to help, not checked: " + s.untestedFixText
+        : outcomeOf(s) === "unconfirmed" && s.untestedFixText ? "Seemed to help, not checked: " + s.untestedFixText
         : s.outcome === "new_problem" && s.newProblem && s.newProblem.what ? "Seen: " + s.newProblem.what
         : issueId === "new" ? entryTitle(s.entryId) : "";
       return el("li", {}, el("label", { class: "rp-sess" }, cb,
         el("span", {},
           el("b", { text: P.ui.fmtDate(s.created) }), " ",
           (P.C.PHONES.find(p => p[0] === s.phone) || [0, "Phone not given"])[1], ". ",
-          P.C.OUTCOMES[s.outcome] || s.outcome || "", ".",
+          P.C.OUTCOMES[outcomeOf(s)] || outcomeOf(s) || "", ".",
           detail ? el("span", { class: "hint", text: " " + detail }) : null)));
     });
     host.replaceChildren(el("ul", { class: "clean rp-sesslist" }, rows));
@@ -256,17 +266,63 @@
     });
     return Array.from(seen.entries()).map(([key, v]) => Object.assign({ key: key }, v));
   }
+  /* This problem's existing suggestions (D24: picks are counted, free text alone never is): guide steps and
+     stopgaps linked to it, and platform, confirmed and team workarounds. Saved as fixPicks [{kind, id}]. */
+  function suggestions() {
+    if (!issueId || issueId === "new" || !P.calc.workarounds) return [];
+    const iss = P.calc.issue(issueId);
+    if (!iss) return [];
+    let w = null;
+    try { w = P.calc.workarounds(iss); } catch (e) { w = null; }
+    if (!w) return [];
+    let use = {};
+    if (P.calc.suggestionUse) { try { use = P.calc.suggestionUse(issueId) || {}; } catch (e) { use = {}; } }
+    const g = P.guide();
+    const out = [], seen = new Set();
+    const add = (kind, id, text, teams) => {
+      const k = P.calc.norm(text);
+      if (!id || !k || seen.has(k)) return;
+      seen.add(k);
+      const n = use[kind + ":" + id] || teams || 0;
+      const node = kind === "step" ? (g.nodes || {})[id] : null;
+      out.push({ kind: kind, id: String(id), key: kind + ":" + id, text: String(text).trim(),
+        label: (node && node.short) || String(text).trim(), meta: n ? "Used by " + n + (n === 1 ? " team" : " teams") : "" });
+    };
+    (w.guide || []).forEach(x => x.nodeId ? add("step", x.nodeId, x.text) : add("stopgap", x.stopgapId, x.text));
+    (w.confirmed || []).forEach(x => add("team", x.key || P.calc.norm(x.text), x.text, x.teams));
+    (w.platform || []).forEach(x => add("team", P.calc.norm(x.text), x.text));
+    (w.team || []).forEach(x => add("team", x.key || P.calc.norm(x.text), x.text, x.teams));
+    /* A guide step or stopgap a ticked session picked, even when it isn't linked to this issue. */
+    tickedSessions().forEach(sx => (Array.isArray(sx.helpedPicks) ? sx.helpedPicks : []).forEach(pk => {
+      const n = pk && pk.kind === "step" ? (g.nodes || {})[pk.id] : pk && pk.kind === "stopgap" ? (g.stopgaps || {})[pk.id] : null;
+      if (n && n.text) add(pk.kind, pk.id, n.text);
+    }));
+    return out;
+  }
+  function pickTicked(key) { return pickOn.has(key) || (!pickOff.has(key) && pickAuto.has(key)); }
   function drawSteps() {
     const steps = guideSteps();
-    f.stepsWrap.hidden = !steps.length;
-    f.stepsList.replaceChildren(...steps.map(st => {
+    const stepKey = st => st.node ? "step:" + st.node : "";
+    const sugg = suggestions().filter(x => !steps.some(st => stepKey(st) === x.key || P.calc.norm(st.text) === P.calc.norm(x.text)));
+    f.stepsWrap.hidden = !steps.length && !sugg.length;
+    f.stepsHint.hidden = !steps.length && !sugg.some(x => pickAuto.has(x.key));
+    const rows = steps.map(st => {
       const cb = el("input", { type: "checkbox", checked: !stepSkip.has(st.key) });
       cb.addEventListener("change", () => { if (cb.checked) stepSkip.delete(st.key); else stepSkip.add(st.key); saveDraftSoon(); });
       return el("li", {}, el("label", { class: "rp-sess" }, cb,
-        el("span", {}, P.ui.chip("Guide step"), " ", st.text,
-          el("span", { class: "hint", text: " " + (st.n === 1 ? "Fixed 1 session." : "Fixed " + st.n + " sessions.") }))));
+        el("span", {}, st.text,
+          el("span", { class: "hint rp-meta", text: st.n === 1 ? "Fixed 1 session" : "Fixed " + st.n + " sessions" }))));
+    }).concat(sugg.map(x => {
+      const cb = el("input", { type: "checkbox", checked: pickTicked(x.key), "data-pick": x.key });
+      cb.addEventListener("change", () => {
+        if (cb.checked) { pickOn.add(x.key); pickOff.delete(x.key); } else { pickOff.add(x.key); pickOn.delete(x.key); }
+        saveDraftSoon();
+      });
+      return el("li", {}, el("label", { class: "rp-sess" }, cb,
+        el("span", {}, x.label, x.meta ? el("span", { class: "hint rp-meta", text: x.meta }) : null)));
     }));
-    f.fixLabel.textContent = steps.length ? "Anything else that helped? (optional)" : "Anything that helped? (optional)";
+    f.stepsList.replaceChildren(...rows);
+    f.fixLabel.textContent = rows.length ? "Something else that helped (optional)" : "Anything that helped? (optional)";
   }
 
   /* ---------- pre-fill ---------- */
@@ -277,10 +333,11 @@
   }
   function prefill() {
     /* A draft restored before issues loaded showed the raw id. Refresh the title now. */
-    if (issueId && issueId !== "__" && f.chosenText) f.chosenText.textContent = P.calc.issueTitle(issueId);
+    if (issueId && issueId !== "__" && f.chosenText) f.chosenText.textContent = issueLabel(issueId);
     const st = P.calc.study(studyId);
     const setup = (st && st.setup) || {};
     const ss = tickedSessions();
+    pickAuto = new Set();
 
     /* From the study setup */
     if (setup.server) setIf("server", setup.server);
@@ -321,8 +378,16 @@
         const age = (Date.now() - Date.parse(times[0])) / 864e5;
         setIf("span", age <= 7 ? "week" : age <= 42 ? "weeks" : "months");
       }
-      /* "What fixed it" holds only the team's own words ("what helped" in sessions). */
-      setIf("fix", mostCommon(ss.map(s => s.helped || "")));
+      /* What the sessions said helped: a pick, or text that is one of the suggestions, ticks that suggestion.
+         Only the team's own words go in the text box. */
+      const sugg = suggestions();
+      const byText = new Map(sugg.map(x => [P.calc.norm(x.text), x.key]));
+      ss.forEach(sx => {
+        (Array.isArray(sx.helpedPicks) ? sx.helpedPicks : []).forEach(pk => { if (pk && pk.kind && pk.id) pickAuto.add(pk.kind + ":" + pk.id); });
+        const hk = byText.get(P.calc.norm(sx.helped || ""));
+        if (hk) pickAuto.add(hk);
+      });
+      setIf("fix", mostCommon(ss.map(sx => sx.helped || "").filter(t => !byText.has(P.calc.norm(t)))));
       ["model", "osVersion", "appVersion"].forEach(k => {
         const vals = new Set(ss.map(s => s.device && s.device[k] ? String(s.device[k]).trim() : "").filter(Boolean));
         setIf(k === "model" ? "device" : k, vals.size === 1 ? Array.from(vals)[0] : "");
@@ -386,11 +451,13 @@
     f.studyChange.hidden = ids.length < 2;
     f.testNote.hidden = !(st && st.test);
     const member = P.calc.inStudy(studyId);
-    f.noStudy.textContent = !ids.length
-      ? "You aren't in a study yet, so you can't send reports. Ask the platform team to add you."
+    const contact = (P.C && P.C.CONTACT) || "mindlamp@bidmc.harvard.edu";
+    const askAdd = () => [" To be added, email ", el("a", { href: "mailto:" + contact, text: contact }), "."];
+    f.noStudy.replaceChildren(...(!ids.length
+      ? ["You aren't in a study yet, so you can't send reports."].concat(askAdd())
       : P.S.user.isAdmin
-        ? "You aren't in this study, so you can't send its reports. You can add yourself to it on the Admin page."
-        : "Only members of a study can send its reports. Ask the platform team to add you.";
+        ? ["You aren't in this study, so you can't send its reports. You can add yourself to it on the Admin page."]
+        : ["Only members of a study can send its reports."].concat(askAdd())));
     f.noStudy.hidden = member;
     f.send.disabled = sending || !member;
   }
@@ -403,7 +470,10 @@
     if (picker && picker.setStudy) picker.setStudy(studyId);
     drawSessions(); prefill();
   }
-  function resetTicks() { ticked = new Set(); knownSessions = new Set(); tickTouched = false; stepSkip = new Set(); scopeOpen = false; }
+  function resetTicks() {
+    ticked = new Set(); knownSessions = new Set(); tickTouched = false; stepSkip = new Set(); scopeOpen = false;
+    pickOn = new Set(); pickOff = new Set(); pickAuto = new Set();
+  }
   function showPicker(open) {
     f.pickerHost.hidden = !open;
     f.chosen.hidden = open || !issueId;
@@ -415,7 +485,7 @@
     resetTicks();
     PREFILL.forEach(k => { if (!SETUP_KEYS.includes(k)) dirty.delete(k); });
     f.newWrap.hidden = issueId !== "new";
-    f.chosenText.textContent = issueId ? P.calc.issueTitle(issueId) : "";
+    f.chosenText.textContent = issueId ? issueLabel(issueId) : "";
     showPicker(!issueId);
     drawSessions(); prefill();
     if (!quiet && issueId) {
@@ -439,6 +509,7 @@
     if (!built || !issueId || !P.S.user.uid) return;
     const d = { uid: P.S.user.uid, at: new Date().toISOString(), studyId: studyId, issueId: issueId,
       ticked: Array.from(ticked), tickTouched: tickTouched, fromSessions: fromSessions, stepSkip: Array.from(stepSkip),
+      pickOn: Array.from(pickOn), pickOff: Array.from(pickOff),
       dirty: Array.from(dirty), vals: {}, radios: {}, notes: {},
       attr: attrGet(), security: !!f.security.checked };
     textFields().forEach(k => { d.vals[k] = f[k].value; });
@@ -474,6 +545,8 @@
     tickTouched = !!d.tickTouched;
     relatedSessions().forEach(s => knownSessions.add(s.id));
     stepSkip = new Set(d.stepSkip || []);
+    pickOn = new Set(d.pickOn || []);
+    pickOff = new Set(d.pickOff || []);
     fromSessions = !!d.fromSessions;
     (d.dirty || []).forEach(k => dirty.add(k));
     textFields().forEach(k => { if (d.vals && d.vals[k] !== undefined) f[k].value = d.vals[k]; });
@@ -590,9 +663,8 @@
 
     /* What fixed it */
     f.stepsList = el("ul", { class: "clean rp-sesslist" });
-    f.stepsWrap = el("div", { class: "rp-sub", hidden: true },
-      el("p", { class: "hint", text: "Guide steps that fixed these sessions. Untick any that didn't help." }),
-      f.stepsList);
+    f.stepsHint = el("p", { class: "hint", text: "Ticked from your sessions. Untick any that didn't help." });
+    f.stepsWrap = el("div", { class: "rp-sub", hidden: true }, f.stepsHint, f.stepsList);
     track("fix", el("input", { type: "text", maxlength: String(L.fix) }));
     f.fixLabel = el("span", { text: "Anything that helped? (optional)" });
     const fixField = el("label", { class: "field" }, f.fixLabel, f.fix, el("span", { class: "hint", text: "Other teams can see this. " + C.PRIVACY_HINT }));
@@ -689,6 +761,13 @@
     /* Guide steps: the ticked ones from sessions, plus "what fixed it" text that is a guide step's text. */
     const steps = guideSteps().filter(st => !stepSkip.has(st.key)).map(st => ({ node: st.node, text: st.text }));
     let fix = f.fix.value.trim();
+    /* Ticked suggestions, plus the ticked guide steps from sessions, as picks of existing suggestions. */
+    const sugg = suggestions();
+    const picks = new Map();
+    sugg.filter(x => pickTicked(x.key)).forEach(x => picks.set(x.key, { kind: x.kind, id: x.id }));
+    steps.forEach(st => { if (st.node) picks.set("step:" + st.node, { kind: "step", id: st.node }); });
+    const typed = fix ? sugg.find(x => P.calc.norm(x.text) === P.calc.norm(fix)) : null;
+    if (typed) { picks.set(typed.key, { kind: typed.kind, id: typed.id }); fix = ""; }
     if (fix && guideKeys().has(P.calc.norm(fix))) {
       if (!steps.some(st => P.calc.norm(st.text) === P.calc.norm(fix))) steps.push({ node: "", text: fix });
       fix = "";
@@ -715,6 +794,7 @@
       words: f.words.value.trim(),
       fix: fix,
       fixSteps: steps,
+      fixPicks: Array.from(picks.values()),
       sessionIds: ids,
       fromSessions: !!fromSessions,
       security: !!f.security.checked
@@ -818,3 +898,6 @@
    2. Test studies: reports there don't count (03 counts_toward_totals), and the form says so.
    3. P.beforeSignOut clears the kept draft (sessionStorage "ip-report-draft").
    4. Uses P.issuePicker extras from issues.js: setStudy(id), clear(), focusSearch(), opts.studyId as a function. */
+/* ROUND 2026-10-28 (CONTRACT-2026-10-28.md): "What helped" lists this problem's existing suggestions as
+   checkboxes (input[data-pick="kind:id"]), saved as fixPicks [{kind, id}] next to the free-text fix. Sessions'
+   helpedPicks, or helped text equal to a suggestion, tick it; drafts keep pickOn/pickOff. Contact: P.C.CONTACT. */
