@@ -189,6 +189,7 @@
     run.path.push({ node: id, kind: n.kind, answer: ans, label: label, note: note });
     delete run.noteDraft[id];
     undo = null;
+    run.was = null;
     advance(next);
     afterMove();
   }
@@ -205,13 +206,20 @@
     run.skips = run.skips.filter(s => s.at <= index);
     if (p.note) run.noteDraft[p.node] = p.note;
     run.cur = p.node;
+    run.was = { node: p.node, answer: p.answer };  /* marks the earlier answer on the reopened step */
     saveRun();
     drawRun(true);
+  }
+  /* The Back button on a step reopens the last answered step (jumps between problems are skipped). */
+  function lastAnswerIndex() {
+    for (let i = run.path.length - 1; i >= 0; i--) if (run.path[i].kind !== "jump") return i;
+    return -1;
   }
   function undoBack() {
     if (!undo || run.ended) return;
     run.path = undo.path; run.skips = undo.skips; run.cur = undo.cur; run.noteDraft = undo.noteDraft;
     undo = null;
+    run.was = null;
     saveRun();
     drawRun(true);
   }
@@ -574,7 +582,9 @@
     }
     const osOnly = n.when && n.when.os ? (Array.isArray(n.when.os) ? n.when.os : [n.when.os]) : null;
     const stageName = String(C.STAGES[n.stage] || "").toLowerCase();
+    const backIdx = lastAnswerIndex();
     const meta = el("div", { class: "g-meta" },
+      backIdx >= 0 ? btn("Back", "btn ghost g-backstep", () => goBack(backIdx)) : null,
       el("span", { class: "k", text: "Step " + (stepCount(run.path) + 1) }),
       n.stage ? chip("Stage " + n.stage + " of 5" + (stageName ? ": " + stageName : ""), "g-stage") : null,
       osOnly ? chip(osOnly.map(o => OS_LABEL[o] || o).join(" or ") + " only") : null,
@@ -588,22 +598,29 @@
       P.ui.field("Note (optional)", note, C.PRIVACY_HINT));
     if (note.value) noteBox.open = true;
 
+    /* After Back, the answer given before is marked in words, not only by color. */
+    const was = run.was && run.was.node === run.cur ? run.was.answer : undefined;
+    const opt = (text, cls, ans) => {
+      const b = btn(text, cls, () => answer(ans));
+      if (ans === was) { b.classList.add("was"); b.append(el("span", { class: "g-was", text: "Your earlier answer" })); }
+      return b;
+    };
     let answers;
     if (n.kind === "question") {
       answers = el("div", { class: "g-answers", role: "group", "aria-label": "Answers" },
-        (n.options || []).map((o, i) => btn(o.label, "btn big g-opt", () => answer(i))),
-        btn(OTHER_Q, "btn ghost g-opt", () => answer("other")));
+        (n.options || []).map((o, i) => opt(o.label, "btn big g-opt", i)),
+        opt(OTHER_Q, "btn ghost g-opt", "other"));
     } else if (n.kind === "action") {
       answers = el("fieldset", { class: "g-answers" },
         el("legend", { text: "Did that fix it?" }),
         el("div", { class: "g-row" },
-          btn("Fixed", "btn", () => answer("fixed")),
-          btn("Not fixed", "btn", () => answer("not_fixed")),
-          btn(OTHER_A, "btn ghost", () => answer("other"))));
+          opt("Fixed", "btn", "fixed"),
+          opt("Not fixed", "btn", "not_fixed"),
+          opt(OTHER_A, "btn ghost", "other")));
     } else {
       answers = el("div", { class: "g-answers" }, el("div", { class: "g-row" },
-        btn("Next", "btn", () => answer("next")),
-        btn(OTHER, "btn ghost", () => answer("other"))));
+        opt("Next", "btn", "next"),
+        opt(OTHER, "btn ghost", "other")));
     }
 
     /* Order for a live call: the question, any caution, the answers; then why, basis and the note. */

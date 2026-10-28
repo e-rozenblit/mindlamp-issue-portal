@@ -27,6 +27,11 @@
 #v-guide .g-step.risk{border-color:var(--warn)}
 #v-guide .g-meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 #v-guide .g-meta .k{margin:0}
+/* Back on a step, and the earlier answer marked after going back */
+#v-guide .btn.g-backstep{padding:4px 12px;min-height:32px;font-size:14px}
+#v-guide .btn.g-backstep::before{content:"\2190\00a0"}
+#v-guide .btn.was{outline:2px solid var(--accent);outline-offset:2px}
+#v-guide .g-was{display:block;font:600 12px/1.3 var(--body);color:inherit;opacity:.85;margin-top:4px}
 #v-guide .chip.g-stage{background:transparent;border:1px solid var(--line);color:var(--muted)}
 #v-guide .g-end{border-left:4px solid var(--line)}
 #v-guide .g-end-fixed{border-left-color:var(--ok)}
