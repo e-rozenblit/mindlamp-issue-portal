@@ -1,0 +1,11 @@
+/* Run the portal page styles. Use the tokens in index.html only; no new colors. Prefix selectors with #v-admin. */
+#v-admin details>summary{cursor:pointer;padding-block:4px}
+#v-admin [role=status] .mini{margin-left:4px}
+@media (max-width:700px){
+  #v-admin input,#v-admin select,#v-admin textarea{font-size:16px}
+  #v-admin .mini{min-height:44px;padding-inline:14px}
+  #v-admin .bar{gap:8px}
+  /* Long study names in a select pushed people cards past 400px. */
+  #v-admin .bar>*{min-width:0;max-width:100%}
+  #v-admin .field select{width:100%}
+}
