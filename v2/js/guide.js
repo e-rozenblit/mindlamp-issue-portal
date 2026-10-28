@@ -786,12 +786,12 @@
     const iss = id ? P.calc.issue(id) : null;
     if (!iss) { V.issueBox.replaceChildren(el("p", { class: "hint", text: "This is a known problem. Its status will show here once the issue list loads." })); return; }
     const plan = P.calc.planFor ? P.calc.planFor(iss) : { planned: iss.planned || "", notNow: iss.status === "not-now" ? (iss.notNowReason || iss.statusNote || "") : "" };
-    V.issueBox.replaceChildren(
+    V.issueBox.replaceChildren(...[
       el("div", { class: "k", text: "Known problem" }),
       el("p", {}, el("b", { text: iss.title || iss.id }), " ", statusChip(iss.status)),
       plan.notNow ? el("p", { text: (plan.notNowLabel || "Why not now: ") + plan.notNow }) : null,
       iss.status !== "not-now" && iss.statusNote ? el("p", { text: iss.statusNote }) : null,
-      plan.planned ? el("p", { text: "What's planned: " + plan.planned }) : null);
+      plan.planned ? el("p", { text: "What's planned: " + plan.planned }) : null].filter(Boolean));
   }
   /* The status line at the top of every ending. It only claims what happened. */
   function savedText(outcome) {

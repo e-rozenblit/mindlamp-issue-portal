@@ -9,6 +9,8 @@
 #v-dev .dev-status{gap:6px;min-width:180px}
 #v-dev .dev-check{display:flex;gap:6px;align-items:center}
 #v-dev .dev-report{font-weight:600}
+/* Severity words under the number: wrap in body text, not the number cell's no-wrap mono. */
+#v-dev .dev-table td.num .hint{white-space:normal;font-family:var(--body);min-width:18ch;max-width:32ch}
 
 /* "How this score was computed" */
 #v-dev details>summary{cursor:pointer;color:var(--accent);font-size:14px;padding-block:4px}
