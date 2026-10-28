@@ -33,8 +33,7 @@
   ];
   const YNU = [["yes", "Yes"], ["no", "No"], ["unsure", "Not sure"]];
   const FEATURES = [
-    ["activities", "Surveys and other activities"],
-    ["games", "Cognitive games"],
+    ["activities", "Activities, such as surveys and cognitive games"],
     ["passive", "Phone data collected in the background (passive sensors)"],
     ["gps", "GPS location"],
     ["wearable", "A wearable or health app"]
@@ -83,13 +82,13 @@
 
   const C = {
     AREAS: { app: "Participant app", passive: "Passive data and battery", surveys: "Surveys and scheduling",
-      activities: "Activities and games", staff: "Staff tools and data" },
+      activities: "Other activities", staff: "Staff tools and data" },
     STATUS: { heard: "Heard", understood: "Cause understood", workaround: "Workaround known",
-      "needs-detail": "Needs detail", scoping: "Being scoped", "in-progress": "In progress",
+      "needs-detail": "Needs detail", scoping: "Fix being planned", "in-progress": "In progress",
       "not-now": "Not now", fixed: "Fixed" },
     /* What each status means. One copy for the Known problems and How this works pages. */
     STATUS_HELP: {
-      heard: "The platform team has seen it.",
+      heard: "The platform team knows about it. The cause isn't known yet.",
       understood: "The cause is known.",
       workaround: "There is a way around it for now.",
       "needs-detail": "The platform team needs more detail. Your next report on it helps.",
@@ -99,8 +98,8 @@
       fixed: "Fixed in a release. Teams on their own server get it when their server is updated."
     },
     STOPS: { none: "Stops nothing", slowed: "Slows people down", prevented: "Prevents tasks", dropout: "Dropout risk" },
-    DATA: { none: "No data effect", missing: "Data missing", wrong: "Data wrong", unknown: "Data: can't tell" },
-    COST: { participant: "Cost: participants", staff: "Cost: staff", analyst: "Cost: analysts", nobody: "No cost yet" },
+    DATA: { none: "No data effect", missing: "Data missing", wrong: "Data wrong", unknown: "Data effect unclear" },
+    COST: { participant: "Extra effort for participants", staff: "Extra work for staff", analyst: "Extra work for analysts", nobody: "No extra work" },
     STOP_PTS: { none: 0, slowed: 1, prevented: 2, dropout: 3 },
     DATA_PTS: { none: 0, missing: 2, wrong: 3, unknown: 2 },
     /* The report form's answer labels, for tracing scores in the same words people chose. */
@@ -172,8 +171,8 @@
       staff: "What study teams do, from their own guides and notes.",
       common: "Standard tech support advice."
     },
-    STAGES: { 1: "Pin down", 2: "Common causes", 3: "Safe fixes", 4: "Confirm", 5: "Escalate" },
-    OUTCOMES: { fixed: "Fixed", unconfirmed: "Fix not confirmed yet", not_fixed: "Still not fixed", no_fix_yet: "No fix yet",
+    STAGES: { 1: "Narrow it down", 2: "Common causes", 3: "Suggested fixes", 4: "Check it worked", 5: "Send to the platform team" },
+    OUTCOMES: { fixed: "Fixed", unconfirmed: "Fix not confirmed yet", not_fixed: "Still not fixed", no_fix_yet: "No known fix yet",
       new_problem: "New problem", ended_early: "Ended early" },
     ENTRY_GROUPS: { participant: "The participant says", noticed: "You noticed", study: "Study tasks", other: "" },
     PRIVACY_HINT: "No names, IDs, dates of birth or other details that identify a person.",
@@ -232,26 +231,98 @@
     document.body.append(t);
     setTimeout(() => t.remove(), 2800);
   }
-  /* Page head: the task title, one short line on when to use it, and at most 3 steps folded away
-     (closed by default; decided 10-27). The open state is kept per page while the tab is open, so a page
-     that rebuilds its head doesn't snap it shut. */
-  const howtoOpen = {};
+  /* Info button (D24): a small "i" that opens a short note on hover, keyboard focus or tap.
+     Phones have no hover, so a tap opens it and keeps it open; a second tap, a tap elsewhere or Escape
+     closes it. Only one is open at a time. content: text, a node, or a list of either. */
+  let infoSeq = 0;
+  let infoOpen = null;
+  const canHover = (() => { try { return matchMedia("(hover: hover) and (pointer: fine)").matches; } catch (e) { return false; } })();
+  function info(content, label) {
+    const id = "info-" + (++infoSeq);
+    const kids = (Array.isArray(content) ? content : [content]).filter(k => k !== null && k !== undefined && k !== false && k !== "")
+      .map(k => (k && k.nodeType) ? k : el("p", { text: String(k) }));
+    const btn = el("button", { type: "button", class: "info-btn", "aria-expanded": "false", "aria-controls": id,
+      "aria-label": label || "More information" }, el("span", { "aria-hidden": "true", text: "i" }));
+    const pop = el("div", { class: "info-pop", id: id, hidden: true }, kids);
+    const wrap = el("span", { class: "info" }, btn, pop);
+    let pinned = false;
+    const state = { wrap: wrap, close: close };
+    function place() {
+      pop.style.left = "0px";
+      const r = pop.getBoundingClientRect();
+      const vw = document.documentElement.clientWidth || window.innerWidth;
+      let shift = 0;
+      if (r.right > vw - 8) shift = vw - 8 - r.right;
+      if (r.left + shift < 8) shift = 8 - r.left;
+      if (shift) pop.style.left = shift + "px";
+    }
+    function open() {
+      if (infoOpen && infoOpen !== state) infoOpen.close();
+      infoOpen = state;
+      btn.setAttribute("aria-expanded", "true");
+      pop.hidden = false;
+      place();
+    }
+    function close() {
+      pinned = false;
+      btn.setAttribute("aria-expanded", "false");
+      pop.hidden = true;
+      if (infoOpen === state) infoOpen = null;
+    }
+    btn.addEventListener("click", e => {
+      e.stopPropagation();
+      if (pinned) close(); else { open(); pinned = true; }
+    });
+    let refocus = false;
+    btn.addEventListener("focus", () => {
+      if (refocus) { refocus = false; return; }
+      let kb = true;
+      try { kb = btn.matches(":focus-visible"); } catch (e) { /* older browsers: open anyway */ }
+      if (kb) open();
+    });
+    wrap.addEventListener("focusout", e => { if (!wrap.contains(e.relatedTarget)) close(); });
+    if (canHover) {
+      wrap.addEventListener("mouseenter", () => open());
+      wrap.addEventListener("mouseleave", () => { if (!pinned && document.activeElement !== btn) close(); });
+    }
+    wrap.addEventListener("keydown", e => {
+      if (e.key === "Escape" && !pop.hidden) {
+        e.stopPropagation(); close();
+        if (document.activeElement !== btn) { refocus = true; btn.focus(); refocus = false; }
+      }
+    });
+    pop.addEventListener("click", e => e.stopPropagation());
+    return wrap;
+  }
+  document.addEventListener("click", e => { if (infoOpen && !infoOpen.wrap.contains(e.target)) infoOpen.close(); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && infoOpen) infoOpen.close(); });
+
+  /* Issue name (D24): the short name is the title; the full sentence, when there is a short name, is the subtitle. */
+  function issueName(i) {
+    /* Loaded issues are flat ({id, title, short, data: "missing", ...}: there `data` is the data effect).
+       A raw row ({id, data: {title, ...}}) is read from its data object. */
+    i = i || {};
+    const d = (i.title === undefined && i.short === undefined && i.data && typeof i.data === "object") ? i.data : i;
+    const id = i.id || d.id || "";
+    const full = String(d.title || "").trim();
+    const short = String(d.short || "").trim();
+    if (short) return { title: short, subtitle: full && full.toLowerCase() !== short.toLowerCase() ? full : "" };
+    return { title: full || id, subtitle: "" };
+  }
+
+  /* Page head (D24): a short title and an optional subtitle. Anything secondary goes behind the info
+     button. Older callers pass { when, steps }: when becomes the subtitle, steps go in the info button. */
   function pageHead(o) {
     o = o || {};
+    const sub = o.subtitle || o.when || "";
     const steps = (o.steps || []).filter(Boolean).slice(0, 3);
-    const key = o.title || "";
-    let fold = null;
-    if (steps.length) {
-      fold = el("details", { class: "howto-wrap" },
-        el("summary", { text: "How to use this page" }),
-        el("ol", { class: "howto" }, steps.map(s => el("li", { text: s }))));
-      if (howtoOpen[key]) fold.open = true;
-      fold.addEventListener("toggle", () => { howtoOpen[key] = fold.open; });
-    }
+    const more = [];
+    if (o.info) more.push(o.info);
+    if (steps.length) more.push(el("ol", { class: "info-steps" }, steps.map(s => el("li", { text: s }))));
+    const h2 = el("h2", { text: o.title || "", tabindex: "-1" });
     return el("header", { class: "pagehead" },
-      el("h2", { text: o.title || "", tabindex: "-1" }),
-      o.when ? el("p", { class: "when", text: o.when }) : null,
-      fold,
+      more.length ? el("div", { class: "pagehead-title" }, h2, info(more, "About this page")) : h2,
+      sub ? el("p", { class: "when subtitle", text: sub }) : null,
       (o.actions && o.actions.length) ? el("div", { class: "acts" }, o.actions) : null);
   }
   function chip(text, cls) { return el("span", { class: "chip" + (cls ? " " + cls : ""), text: text }); }
@@ -366,7 +437,7 @@
     return root;
   }
 
-  const ui = { el, $, $$, toast, pageHead, chip, statusChip, basisChip, empty, field, select, fmtDate, ago, cardPicker };
+  const ui = { el, $, $$, toast, pageHead, info, issueName, chip, statusChip, basisChip, empty, field, select, fmtDate, ago, cardPicker };
 
   /* ---------- store: Supabase ---------- */
   function toRecord(r) {
@@ -558,7 +629,7 @@
     if (e && e.code === "offline") return "Sign in to save.";
     if (e && (e.code === "42501" || /row-level security|permission/i.test(e.message || ""))) return "You don't have permission to change this.";
     if (e && e.code === "23505") return "That already exists.";
-    if (e && e.code === "23514") return "The database isn't ready for this yet. Ask the platform team.";
+    if (e && e.code === "23514") return "This can't be saved yet. Tell the platform team with \"Feedback on this page\" at the top.";
     return "Couldn't save. Try again in a moment.";
   }
 
@@ -596,7 +667,7 @@
       /* Severity: from teams' reports when there are any (D23); the starter rating only until then.
          Sessions don't record impact, so they count toward breadth, not severity. */
       const sc = S.agg.scoresReady ? (S.agg.scores[issue.id] || null) : calc.localScores(issue.id);
-      o.starterSev = (C.STOP_PTS[issue.stops] || 0) + (C.DATA_PTS[issue.data] || 0);
+      o.starterSev = (calc.topPoints(issue, "stops", C.STOP_PTS) || 0) + (calc.topPoints(issue, "data", C.DATA_PTS) || 0);
       o.sevN = sc && sc.sev !== null && sc.sev !== undefined ? sc.sevN : 0;
       o.sevFrom = o.sevN ? "reports" : "starter";
       o.sev = o.sevN ? sc.sev : o.starterSev;
@@ -607,12 +678,35 @@
       o.signal = Math.round((o.sev + calc.breadth(o.teams) + Math.min(o.boosts, 3) + Math.min(o.recent, 3) + o.goal) * 10) / 10;
       return o;
     },
+    /* A report's answers to one question, always as an array (D24: the impact questions and the cause
+       allow several answers). Older reports hold one value; newer ones an array. Use this, never rep[key].
+       key: "stops", "data", "cost", "mechanism" or "attribution". */
+    answers(rep, key) {
+      const v = rep ? rep[key] : null;
+      const list = Array.isArray(v) ? v : (v === null || v === undefined || v === "" ? [] : [v]);
+      return Array.from(new Set(list.map(String).filter(Boolean)));
+    },
+    /* Points for the most severe answer chosen in one question (D24: ticking more boxes doesn't raise
+       severity), or null when no answer is on the scale ("other" and blanks are left out). */
+    topPoints(rep, key, pts) {
+      const p = calc.answers(rep, key).filter(a => Object.prototype.hasOwnProperty.call(pts, a)).map(a => pts[a]);
+      return p.length ? Math.max.apply(null, p) : null;
+    },
+    /* A report's severity: most severe "What did it stop?" + most severe "What did it do to the data?".
+       null when either question has no answer on the scale. Same rule as portal_issue_scores. */
+    reportSev(rep) {
+      const s = calc.topPoints(rep, "stops", C.STOP_PTS), d = calc.topPoints(rep, "data", C.DATA_PTS);
+      return s === null || d === null ? null : s + d;
+    },
     /* Points a report earns for the reporting study's goals: 3 if it threatens the study's first goal,
-       2 its second, 1 its third, else 0. */
+       2 its second, 1 its third, else 0. Every answer chosen counts (D24). */
     goalPoints(rep, ranking) {
       const top = (ranking || []).slice(0, 3);
       const M = C.IMPACT_GOALS;
-      const goals = [].concat(M.stops[rep.stops] || [], M.data[rep.data] || [], M.cost[rep.cost] || []);
+      const goals = [];
+      ["stops", "data", "cost"].forEach(k => calc.answers(rep, k).forEach(a => {
+        if (Object.prototype.hasOwnProperty.call(M[k], a)) goals.push.apply(goals, M[k][a]);
+      }));
       let p = 0;
       goals.forEach(g => { const ix = top.indexOf(g); if (ix >= 0) p = Math.max(p, 3 - ix); });
       return p;
@@ -621,7 +715,7 @@
     localScores(issueId) {
       const reps = S.reports.filter(r => (r.linkedIssueId || r.issueId) === issueId && !r.security);
       if (!reps.length) return null;
-      const valid = reps.filter(r => r.stops in C.STOP_PTS && r.data in C.DATA_PTS);
+      const valid = reps.filter(r => calc.reportSev(r) !== null);
       const per = {};
       reps.forEach(r => {
         const st = r.studyId ? calc.study(r.studyId) : null;
@@ -632,7 +726,7 @@
       const ks = Object.values(per);
       const r1 = x => Math.round(x * 10) / 10;
       return {
-        sev: valid.length ? r1(valid.reduce((a, r) => a + C.STOP_PTS[r.stops] + C.DATA_PTS[r.data], 0) / valid.length) : null,
+        sev: valid.length ? r1(valid.reduce((a, r) => a + calc.reportSev(r), 0) / valid.length) : null,
         sevN: valid.length, goal: ks.length ? r1(ks.reduce((a, b) => a + b, 0) / ks.length) : null, goalN: ks.length
       };
     },
@@ -737,16 +831,17 @@
     studyFacts(studyId) {
       const st = calc.study(studyId);
       const s = (st && st.setup) || {};
-      const f = Array.isArray(s.features) ? s.features : null;
+      /* "games" was its own option until 10-28; games are activities, so an older setup that ticked it counts as activities. */
+      const f = Array.isArray(s.features) ? s.features.map(k => k === "games" ? "activities" : k) : null;
       const has = k => f ? f.includes(k) : null;
       const yn = v => v === "yes" ? true : v === "no" ? false : null;
       const passive = f ? (f.includes("passive") || f.includes("gps")) : null;
       return {
         phones: s.phones || "",
         server: s.server || "",
-        activities: has("activities"), games: has("games"), passive: passive, gps: has("gps"), wearable: has("wearable"),
+        activities: has("activities"), passive: passive, gps: has("gps"), wearable: has("wearable"),
         wearables: f ? (f.includes("wearable") ? ((s.wearables && s.wearables.length) ? s.wearables.slice() : null) : []) : null,
-        passiveOnly: f ? (passive && !f.includes("activities") && !f.includes("games")) : null,
+        passiveOnly: f ? (passive && !f.includes("activities")) : null,
         ownServer: yn(s.ownServer), reminderOnly: yn(s.reminderOnly), windows: yn(s.windows),
         loaned: s.devices === "loaned" || s.devices === "both" ? true : s.devices === "own" ? false : null
       };
@@ -776,8 +871,8 @@
       const settled = issue.status === "fixed" || issue.status === "in-progress";
       const notNow = own || (settled ? "" : ((lines.find(p => p.notNowReason) || {}).notNowReason) || "");
       /* label: "Why not now: " when the issue itself is Not now; otherwise the line comes from a proposal
-         on an issue with another status (one idea was set aside, not the whole issue). */
-      return { planned: planned, notNow: notNow, notNowLabel: own ? "Why not now: " : "One idea for this was set aside: " };
+         on an issue with another status, so it names what is on hold (D24: a line must make sense on its own). */
+      return { planned: planned, notNow: notNow, notNowLabel: own ? "Why not now: " : "A proposed fix is on hold: " };
     },
     isFixed(issue) { return issue && issue.status === "fixed"; },
     /* One wording for the open triage counts, on Start here and the Dev meeting page. */
@@ -802,7 +897,7 @@
           source: "From " + s.sevN + " team report" + (s.sevN === 1 ? "" : "s") + "." };
       }
       const parts = [issue.stops && issue.stops !== "none" ? C.STOPS[issue.stops] : "", issue.data && issue.data !== "none" ? C.DATA[issue.data] : ""].filter(Boolean);
-      return { words: parts.length ? parts.join(", ") + "." : "No effect rated yet.", source: "Starter estimate, no team reports yet." };
+      return { words: parts.length ? parts.join(", ") + "." : "Not rated yet.", source: "Platform team's first estimate. No team has reported it yet." };
     }
   };
 
@@ -829,7 +924,7 @@
     const sec = section(m.id);
     try { m.render(params); } catch (e) {
       console.error("render " + m.id, e);
-      if (sec) sec.replaceChildren(empty("This page didn't load. Reload the page, or tell the platform team."));
+      if (sec) sec.replaceChildren(empty("This page didn't load. Reload the page. If that fails, use \"Feedback on this page\" at the top."));
     }
   }
   function show(id, params) {
@@ -1059,8 +1154,21 @@
       if (!confirm("Clear everything you did in the demo and start again?")) return;
       D.reset(); restart();
     });
+    /* "What is this?" explains the demo itself in an info note (How this works says nothing about the demo). */
     const what = $("#demo-what");
-    if (what) what.addEventListener("click", () => go("about"));
+    if (what) {
+      const howLink = el("button", { type: "button", class: "linkbtn", text: "How the portal works" });
+      howLink.addEventListener("click", () => { if (infoOpen) infoOpen.close(); go("about"); });
+      const note = info([
+        "The studies, problems and people here are made up.",
+        "Nothing you do is sent anywhere. It stays in this tab until you reset the demo or close the tab.",
+        "Use \"View as\" to see the portal as each role.",
+        el("p", {}, howLink)
+      ], "About this demo");
+      const btn = note.querySelector(".info-btn");
+      btn.id = "demo-what";
+      what.replaceWith(note);
+    }
     const leave = $("#demo-leave");
     if (leave) leave.setAttribute("href", location.pathname);
     const so = $("#signout");

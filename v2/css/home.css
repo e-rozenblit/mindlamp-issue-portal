@@ -6,3 +6,6 @@
 #v-home .panel{gap:6px}
 #v-home .panel p{margin:0}
 #v-home .panel>.bar:last-child{margin-top:6px}
+/* D24 refresh (2026-10-28): list heading with its info button */
+#v-home .home-head{gap:6px;align-items:center;flex-wrap:nowrap}
+#v-home .home-head h3{margin:0}

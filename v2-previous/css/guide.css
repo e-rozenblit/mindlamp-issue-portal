@@ -1,0 +1,135 @@
+/* Troubleshoot a participant page styles. Owner: B1. Use the tokens in index.html only; no new colors. Prefix selectors with #v-guide. */
+#v-guide .g-start,#v-guide .g-pick{gap:10px}
+#v-guide .g-start h3,#v-guide .g-pick h3{font-size:15px}
+#v-guide .g-start select{width:100%;max-width:28em}
+#v-guide .g-phones-wrap{display:grid;gap:6px}
+#v-guide .g-label{font-weight:600;font-size:14px}
+#v-guide .g-phones{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;max-width:30em}
+#v-guide .g-phone{font:600 15px var(--body);min-height:48px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:var(--r);cursor:pointer;padding:8px}
+#v-guide .g-phone:hover{border-color:var(--accent)}
+#v-guide .g-phone[aria-pressed="true"]{border-color:var(--accent);background:var(--accent);color:var(--accent-ink)}
+#v-guide .g-run{display:grid;gap:14px;grid-template-columns:minmax(0,1fr);align-items:start}
+#v-guide .g-steps{display:grid;gap:12px;min-width:0}
+#v-guide .g-summary{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between}
+#v-guide .g-facts{display:flex;flex-wrap:wrap;gap:4px 18px;margin:0;font-size:14px}
+#v-guide .g-facts div{display:flex;gap:6px;min-width:0}
+#v-guide .g-facts dt{color:var(--muted)}
+#v-guide .g-facts dd{margin:0;font-weight:600;overflow-wrap:anywhere}
+#v-guide .g-trail{list-style:none;margin:0;padding:0;display:grid;gap:4px}
+#v-guide .g-done{font-size:14px;color:var(--muted);border-left:2px solid var(--line);padding-left:10px;overflow-wrap:anywhere}
+#v-guide .g-done.jump{font-style:italic}
+#v-guide .g-back{background:none;border:0;padding:2px 0;font:inherit;color:var(--muted);text-align:left;cursor:pointer;text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:3px}
+#v-guide .g-back:hover{color:var(--ink);text-decoration-color:var(--accent)}
+#v-guide .g-step{gap:12px}
+#v-guide .g-step h3{font-size:18px;line-height:1.35;overflow-wrap:anywhere}
+#v-guide .g-step h3:focus{outline:none}
+#v-guide .g-step h3:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#v-guide .g-step.risk{border-color:var(--warn)}
+#v-guide .g-meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+#v-guide .g-meta .k{margin:0}
+/* Back on a step, and the earlier answer marked after going back */
+#v-guide .btn.g-backstep{padding:4px 12px;min-height:32px;font-size:14px}
+#v-guide .btn.g-backstep::before{content:"\2190\00a0"}
+#v-guide .btn.was{outline:2px solid var(--accent);outline-offset:2px}
+#v-guide .g-was{display:block;font:600 12px/1.3 var(--body);color:inherit;opacity:.85;margin-top:4px}
+#v-guide .chip.g-stage{background:transparent;border:1px solid var(--line);color:var(--muted)}
+#v-guide .g-end{border-left:4px solid var(--line)}
+#v-guide .g-end-fixed{border-left-color:var(--ok)}
+#v-guide .g-end-not_fixed,#v-guide .g-end-no_fix_yet{border-left-color:var(--warn)}
+#v-guide .g-end-new_problem{border-left-color:var(--info)}
+#v-guide .caution p{margin:0 0 4px}
+#v-guide .caution p:last-child{margin:0}
+#v-guide .g-why{font-size:14px;color:var(--muted);display:grid;gap:4px}
+#v-guide .g-why p{margin:0}
+#v-guide .g-why b{color:var(--ink)}
+#v-guide .g-basis{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+#v-guide .g-note>summary{cursor:pointer;color:var(--accent);font-size:14px;width:max-content;max-width:100%}
+#v-guide .g-note .field{margin-top:6px}
+#v-guide .g-answers{display:grid;gap:8px;min-width:0}
+#v-guide fieldset.g-answers{border:0;padding:0}
+#v-guide fieldset.g-answers legend{font:600 16px var(--display);padding:0;margin-bottom:8px}
+#v-guide .g-opt{width:100%;white-space:normal;overflow-wrap:anywhere}
+#v-guide .btn.ghost.g-opt{text-align:left;padding:12px 18px}
+#v-guide .g-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+#v-guide .g-row .btn{white-space:normal}
+#v-guide .g-block{display:grid;gap:6px;min-width:0}
+#v-guide .g-block p{margin:0}
+#v-guide .g-stopgaps{margin:0;padding-left:18px;display:grid;gap:10px}
+#v-guide .g-sg-text{margin:0;font-weight:600}
+#v-guide .g-ok{margin:0;color:var(--ok);font-weight:600;font-size:14px}
+#v-guide .g-save p{margin:0}
+#v-guide .g-save{display:grid;gap:8px;justify-items:start}
+#v-guide .g-flow{padding:12px 14px}
+#v-guide .g-flow>summary{cursor:pointer;font-weight:600;color:var(--accent)}
+#v-guide .g-flow[open]>summary{margin-bottom:8px}
+#v-guide .fm-head{display:grid;gap:4px;margin-bottom:10px}
+#v-guide .fm-head .k{margin:0}
+#v-guide ol.fm{list-style:none;margin:0;padding:0 0 0 12px;border-left:2px solid var(--line);display:grid;gap:10px}
+#v-guide .fm-item{position:relative;display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 8px;align-items:start;font-size:14px;padding:4px 6px;border-radius:var(--r)}
+#v-guide .fm-item::before{content:"";position:absolute;left:-19px;top:11px;width:10px;height:10px;border-radius:50%;background:var(--surface);border:2px solid var(--line)}
+#v-guide .fm-item>.fm-label{grid-column:2;font-weight:600;overflow-wrap:anywhere}
+#v-guide .fm-item>.fm-stage{grid-column:1}
+#v-guide .fm-item>.fm-opts,#v-guide .fm-item>.fm-why{grid-column:1 / -1}
+#v-guide .fm-stage{font:600 11px/18px var(--mono);min-width:18px;height:18px;text-align:center;border-radius:50%;border:1px solid var(--line);color:var(--muted)}
+#v-guide .fm-start::before,#v-guide .fm-question::before{border-color:var(--accent);background:var(--accent)}
+#v-guide .fm-start .fm-label,#v-guide .fm-jump .fm-label{grid-column:1 / -1}
+#v-guide .fm-jump .fm-label{font-weight:400;font-style:italic;color:var(--muted)}
+#v-guide .fm-skip{color:var(--muted)}
+#v-guide .fm-skip .fm-label{font-weight:400;text-decoration:line-through;text-decoration-color:var(--line)}
+#v-guide .fm-skip::before{border-style:dashed}
+#v-guide .fm-why{font-size:12px;color:var(--muted)}
+#v-guide .fm-current{outline:2px solid var(--accent);outline-offset:0;background:var(--accent-soft)}
+#v-guide .fm-current::before{border-color:var(--accent);background:var(--accent-soft)}
+#v-guide .fm-end::before{border-color:var(--ok);background:var(--ok)}
+#v-guide .fm-end .fm-label{grid-column:1 / -1}
+#v-guide .fm-missing .fm-label{grid-column:1 / -1}
+#v-guide ul.fm-opts{list-style:none;margin:4px 0 0;padding:0 0 0 10px;border-left:1px dashed var(--line);display:grid;gap:4px}
+#v-guide .fm-opt{display:grid;gap:0;font-size:13px;padding:3px 8px;border-radius:var(--r);border:1px solid transparent;overflow-wrap:anywhere}
+#v-guide .fm-opt.on{border-color:var(--accent);background:var(--accent-soft);color:var(--ink);font-weight:600}
+#v-guide .fm-opt.off{color:var(--muted)}
+#v-guide .fm-to{font-size:12px;color:var(--muted);font-weight:400}
+#v-guide .fm-sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+/* Page head: steps folded behind "How this works"; during a run only the title stays. */
+#v-guide .pagehead .g-howto>summary{cursor:pointer;color:var(--accent);font-size:14px;width:max-content;max-width:100%}
+#v-guide .pagehead .g-howto[open]>summary{margin-bottom:4px}
+#v-guide .pagehead.g-running .when,#v-guide .pagehead.g-running details,#v-guide .pagehead.g-running ol.howto{display:none}
+#v-guide .pagehead.g-running h2{font-size:18px}
+/* Answers so far, below the step */
+#v-guide .g-trailwrap{display:grid;gap:6px;min-width:0}
+#v-guide .g-trailhead{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline}
+#v-guide .g-trailhead .k{margin:0}
+#v-guide .g-undo{font-size:14px;padding:6px 10px;border:1px solid var(--line);border-radius:var(--r);background:var(--accent-soft)}
+/* Basis chips explain themselves on a tap */
+#v-guide .g-basis-btn{font:600 12px var(--body);cursor:pointer;min-height:28px}
+#v-guide .g-basis-btn[aria-expanded="true"]{border-color:var(--accent);color:var(--ink)}
+#v-guide .g-basis-help{margin:0}
+/* Endings: what to ask before hanging up, and what is still to check */
+#v-guide .g-ask{border-left:3px solid var(--accent);padding-left:10px}
+#v-guide .g-later{border-left:3px solid var(--warn);padding-left:10px}
+#v-guide .g-end-unconfirmed{border-left-color:var(--warn)}
+/* Flow map: path taken by default, all branches on request */
+#v-guide .fm-headrow{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;justify-content:space-between}
+#v-guide .fm-headrow .k{margin:0}
+#v-guide .fm-toggle{min-height:32px}
+#v-guide .fm-item>.fm-ans{grid-column:2;font-size:13px;color:var(--ink);overflow-wrap:anywhere}
+#v-guide .fm-ans.fm-now{color:var(--accent);font-weight:600}
+#v-guide .fm-allhead{margin:14px 0 8px;padding-top:10px;border-top:1px solid var(--line)}
+#v-guide .fm-allhead .k{margin:0}
+#v-guide .fm-visited::before{border-color:var(--accent)}
+#v-guide .fm-here{outline:2px solid var(--accent);background:var(--accent-soft)}
+@media (max-width:700px){
+  #v-guide input,#v-guide select,#v-guide textarea{font-size:16px}
+  #v-guide .g-back{min-height:44px;padding:8px 0}
+  #v-guide .g-trail{gap:8px}
+  #v-guide .fm-toggle,#v-guide .g-basis-btn{min-height:44px}
+  #v-guide .g-note>summary,#v-guide .pagehead .g-howto>summary,#v-guide .g-flow>summary{padding-block:12px}
+}
+@media (min-width:900px){
+  #v-guide .g-run{grid-template-columns:minmax(0,1fr) 300px}
+  #v-guide .g-flow{grid-column:2;grid-row:1;position:sticky;top:64px;max-height:calc(100vh - 84px);overflow:auto}
+  #v-guide .g-flow>summary{display:none}
+  #v-guide .g-steps{grid-column:1;grid-row:1}
+}
+@media (prefers-reduced-motion:no-preference){#v-guide .g-step{animation:gstep .15s ease-out}@keyframes gstep{from{opacity:.4}to{opacity:1}}}
+#v-guide .g-studyline{margin:0;display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center;overflow-wrap:anywhere}
+@media (max-width:700px){#v-guide .g-studyline .mini{min-height:44px}}

@@ -88,6 +88,19 @@ h2[tabindex="-1"]:focus,h3[tabindex="-1"]:focus{outline:none}
 .howto-wrap>summary{cursor:pointer;color:var(--accent);font-size:14px;font-weight:600;padding-block:6px;width:max-content;max-width:100%}
 .pagehead ol.howto{margin:2px 0 0;padding-left:22px;display:grid;gap:2px;max-width:68ch}
 .pagehead .acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+.pagehead-title{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.pagehead-title h2{margin:0}
+
+/* Info button (D24): a small "i" that opens a short note on hover, focus or tap */
+.info{position:relative;display:inline-flex;vertical-align:middle}
+.info-btn{display:inline-grid;place-items:center;width:22px;height:22px;min-height:22px;padding:0;border-radius:50%;border:1px solid var(--field-line);background:var(--surface);color:var(--muted);font:600 12px/1 var(--body);font-style:italic;cursor:pointer;position:relative}
+.info-btn::before{content:"";position:absolute;inset:-11px}
+.info-btn:hover,.info-btn[aria-expanded="true"]{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
+.info-pop{position:absolute;z-index:25;top:calc(100% + 8px);left:0;width:max-content;max-width:min(340px,calc(100vw - 32px));background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:10px 12px;box-shadow:0 8px 28px rgba(0,0,0,.16);font:400 14px/1.5 var(--body);text-align:left;white-space:normal}
+.info-pop p{margin:0 0 .5em}
+.info-pop>:last-child,.info-pop p:last-child{margin-bottom:0}
+.info-pop ol{margin:0;padding-left:20px;display:grid;gap:4px}
+.info-pop ol+p,.info-pop p+ol{margin-top:6px}
 
 /* Controls */
 .bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
@@ -223,7 +236,7 @@ dialog#fb-dialog::backdrop{background:rgba(0,0,0,.4)}
       <button class="btn ghost fbbtn" type="button" id="fb-open">Feedback on this page</button>
     </div>
   </header>
-  <p class="notice warn" id="test-banner" hidden>Test study: for trying the portal out. Nothing saved here counts toward any issue. Don't log real participants here.</p>
+  <p class="notice warn" id="test-banner" hidden>Test study, for trying the portal out. Nothing saved here counts toward any problem's totals. Don't log real participants here.</p>
 
   <form class="panel authbox" id="auth" hidden novalidate>
     <h2>Sign in</h2>

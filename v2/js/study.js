@@ -6,6 +6,10 @@
   const P = window.Portal;
   const { C, S, calc, store, ui } = P;
   const el = ui.el;
+  /* Info button from core (hover, tap, keyboard); a plain fold until core has it. */
+  const info = (content, label) => (P.ui.info ? P.ui.info(content, label) : P.ui.el("details", { class: "more" }, P.ui.el("summary", { text: label || "More" }), content));
+  /* Page head: new core takes { title, subtitle }; older core shows "when" as the line under the title. */
+  const headOf = (title, subtitle) => ui.pageHead(P.ui.info ? { title, subtitle } : { title, when: subtitle });
 
   /* Module state. "dirty" holds the panels with unsaved edits (setup, population, name, goals).
      A data refresh rebuilds the page only when no panel has unsaved edits, so saving one panel
@@ -60,17 +64,17 @@
       let wrap;
       if (q.type === "text") {
         const inp = el("input", { type: "text", value: setup[q.id] || "", maxlength: "200", disabled: !canEdit, "aria-describedby": name + "-why" });
-        wrap = el("label", { class: "field" }, el("span", { text: q.label }), inp,
-          el("span", { class: "hint", id: name + "-why", text: "Why we ask: " + q.why }));
+        wrap = el("div", { class: "field" }, el("span", {}, el("label", { for: name, text: q.label }), " ",
+          q.why ? info(el("span", { id: name + "-why", text: q.why }), "Why we ask") : null), inp);
+        inp.id = name;
       } else {
         const multi = q.type === "multi";
         const cur = setup[q.id];
         wrap = el("fieldset", { "aria-describedby": name + "-why" },
-          el("legend", { text: q.label }),
+          el("legend", {}, q.label, " ", q.why ? info(el("span", { id: name + "-why", text: q.why }), "Why we ask") : null),
           el("div", { class: "opts" }, q.options.map(([v, t]) => el("label", {},
             el("input", { type: multi ? "checkbox" : "radio", name: name, value: v, disabled: !canEdit,
-              checked: multi ? (Array.isArray(cur) && cur.includes(v)) : cur === v }), t))),
-          el("p", { class: "hint", id: name + "-why", style: "margin:6px 0 0", text: "Why we ask: " + q.why }));
+              checked: multi ? (Array.isArray(cur) && cur.includes(v)) : cur === v }), t))));
       }
       blocks[q.id] = { wrap };
       form.append(wrap);
@@ -100,9 +104,8 @@
     if (facts.gps === false) parts.push("Your study doesn't collect GPS, so location steps won't show.");
     if (facts.wearable === false) parts.push("Your study doesn't use a wearable or health app, so those steps won't show.");
     if (facts.passiveOnly === true) parts.push("Your study has no activities, so activity steps won't show.");
-    if (hiddenCards.length) parts.push("Problems hidden in the guide: " + hiddenCards.join(", ") + ".");
-    if (skipped) parts.push(skipped + (skipped === 1 ? " step is" : " steps are") + " skipped because of your answers.");
-    if (!parts.length) parts.push("With your saved answers, every troubleshooting step can show.");
+    if (hiddenCards.length) parts.push("Troubleshoot won't show: " + hiddenCards.join(", ") + ".");
+    if (!parts.length && !skipped) parts.push("With your saved answers, every troubleshooting step can show.");
     return parts.join(" ");
   }
 
@@ -123,7 +126,7 @@
       el("summary", { text: "What each goal means" }),
       el("ul", { class: "clean" }, C.GOALS.map(g => el("li", {},
         el("b", { text: g + ": " }), goalDef(g),
-        wg.has(g) ? null : el("span", { class: "hint", text: " No report answer points to this goal yet, so it doesn't change rankings." })))));
+        wg.has(g) ? null : el("span", { class: "hint", text: " (Doesn't affect rankings yet.)" })))));
   }
 
   function rankBlock(legend, prefix, current, canEdit) {
@@ -150,6 +153,8 @@
     return { el: box, values: () => sels.map(s => s.value).filter(Boolean) };
   }
 
+  function hasTallies() { return !!(S.agg && S.agg.ready && (S.agg.goals || []).some(g => (g.top3 || 0) > 0)); }
+
   function talliesTable() {
     const rows = (S.agg.goals || []).filter(g => (g.top3 || 0) > 0);
     if (!S.agg.ready) return ui.empty("Goal rankings from all studies will show here once the database update has run.");
@@ -167,6 +172,28 @@
     }));
   }
 
+  /* The study's own reports, read-only (members and the platform team can read them; How this works says so). */
+  function reportsList(studyId) {
+    const reps = (S.reports || []).filter(r => r.studyId === studyId).sort((a, b) => String(b.created).localeCompare(String(a.created)));
+    if (!reps.length) return ui.empty("No reports from this study yet.");
+    const ans = (r, k) => (typeof calc.answers === "function" ? calc.answers(r, k)
+      : (Array.isArray(r[k]) ? r[k] : (r[k] ? [r[k]] : [])));
+    const words = (r, k, names) => ans(r, k).map(a => (((C.IMPACT_LABEL || {})[k] || {})[a]) || (names || {})[a] || a).join(", ");
+    const row = (label, val) => val ? el("li", {}, el("b", { text: label + ": " }), String(val)) : null;
+    return el("div", { class: "list" }, reps.slice(0, 20).map(r => {
+      const iid = r.linkedIssueId || r.issueId;
+      const title = iid && iid !== "new" ? calc.issueTitle(iid) : "Something new: " + (r.newTitle || "no title");
+      return el("details", { class: "sd-report" },
+        el("summary", { text: title + ", " + ui.fmtDate(r.created) + (r.author ? " (" + calc.personName(r.author) + ")" : "") }),
+        el("ul", { class: "clean" },
+          row("What it stopped", words(r, "stops", C.STOPS)),
+          row("What it did to the data", words(r, "data", C.DATA)),
+          row("Who had to deal with it", words(r, "cost", C.COST)),
+          row("Participants affected", r.n),
+          row("What helped", r.fix)));
+    }), reps.length > 20 ? el("p", { class: "hint", text: "Showing the 20 most recent of " + reps.length + "." }) : null);
+  }
+
   function membersList(studyId) {
     const ms = membersOf(studyId);
     if (!ms.length) return ui.empty("No members listed yet.");
@@ -177,7 +204,7 @@
   /* ---------- page ---------- */
   /* Read-only roles (coordinators, analysts) get a head that doesn't ask them to fill anything in. */
   function head(readOnly) {
-    if (readOnly) return ui.pageHead({ title: "Your study's setup", when: "Your study lead keeps this current." });
+    if (readOnly) return headOf("Your study", "Your study lead keeps this current. If something is out of date, tell them.");
     return ui.pageHead(P.PAGE_COPY.study);
   }
 
@@ -207,7 +234,10 @@
     st.dirty = new Set();
 
     if (!calc.myStudies().length) {
-      sec.replaceChildren(head(), ui.empty("You aren't in a study yet. Ask the platform team to add you to one."));
+      const noStudyRole = (S.user.memberships || []).some(m => m.role === "dev" || m.role === "platform");
+      sec.replaceChildren(noStudyRole ? headOf("Your study", "") : head(), ui.empty(noStudyRole
+        ? "Developers and the platform team aren't part of a study, so there is no setup here."
+        : "You aren't in a study yet. Ask the platform team to add you to one."));
       st.refs = null; return;
     }
     if (!study) {
@@ -234,8 +264,8 @@
     const setupStatus = el("span", { class: "hint", role: "status" });
     const skip = el("p", { class: "hint", text: skipLine(studyId) });
     const setupPanel = el("div", { class: "panel" },
-      el("h3", { text: "1. Study setup" }),
-      el("p", { class: "hint", text: "These answers decide which troubleshooting steps show. All are optional. Skip any you don't know." }),
+      el("h3", { text: "Study setup" }),
+      el("p", { class: "hint", text: canEdit ? "Decides which troubleshooting steps show. All optional; skip anything you don't know." : "Decides which troubleshooting steps show." }),
       canEdit ? el("p", { class: "hint", text: "Not sure? Your coordinator usually knows." }) : null,
       setup.el, skip,
       canEdit ? el("div", { class: "bar" },
@@ -245,17 +275,17 @@
 
     /* Population */
     const pop = new Set(study.population || []);
-    const popBox = el("fieldset", {}, el("legend", { text: "Who takes part" }),
+    const popBox = el("fieldset", {}, el("legend", { class: "sr-only", text: "Who takes part" }),
       el("div", { class: "opts" }, C.POPULATION.map(([v, t]) => el("label", {},
         el("input", { type: "checkbox", value: v, checked: pop.has(v), disabled: !canEdit }), t))));
     popBox.addEventListener("change", () => { st.dirty.add("population"); });
     const popStatus = el("span", { class: "hint", role: "status" });
     const popPanel = el("div", { class: "panel" },
-      el("h3", { text: "2. Population tags" }),
-      el("p", { class: "hint", text: "Optional. For future research on problems by population. It doesn't change the guide." }),
+      el("h3", { text: "Who takes part (optional)" }),
+      el("p", { class: "hint", text: "Doesn't change Troubleshoot. Kept for later research on which problems affect which groups." }),
       popBox,
       canEdit ? el("div", { class: "bar" },
-        el("button", { type: "button", class: "btn", text: "Save population tags",
+        el("button", { type: "button", class: "btn", text: "Save who takes part",
           onclick: () => save(studyId, "population", { population: ui.$$("input:checked", popBox).map(i => i.value) }, popStatus, "Population tags saved") }),
         popStatus) : null);
 
@@ -266,8 +296,8 @@
     const showPanel = el("div", { class: "panel" },
       el("h3", { text: "What other teams see" }),
       el("label", { class: "opts" }, el("span", { style: "display:flex;gap:6px;align-items:center" }, showBox, "Show our study's name to other teams")),
-      el("p", { class: "hint", text: "Off: other teams see \"a team\" on your reports, \"This affects us too\" answers and workarounds. On: they see your study's name." }),
-      el("p", { class: "hint", text: "Other teams never see your sessions, your reports' details, this setup or your goal ranking." }),
+      el("p", { class: "hint", text: "Off: other teams see \"a team\". On: they see your study's name next to your workarounds and \"This affects us too\" answers." }),
+      el("p", { class: "hint", text: "They never see your sessions, report details, this setup or your goal ranking." }),
       canEdit ? el("div", { class: "bar" },
         el("button", { type: "button", class: "btn", text: "Save name setting",
           onclick: () => save(studyId, "name", { showName: showBox.checked }, showStatus, showBox.checked ? "Other teams will see your study's name" : "Other teams will see \"a team\"") }),
@@ -278,10 +308,11 @@
     const pr = rankBlock("Participants: top 3 goals, in order (optional)", "p", study.participantGoals, canRank);
     const goalStatus = el("span", { class: "hint", role: "status" });
     const goalsPanel = el("div", { class: "panel" },
-      el("h3", { text: "3. Your study's goals" }),
-      el("p", {}, "Your ranking weights issues. When your team reports an issue that threatens one of your top 3 researcher goals, the issue ranks higher in the dev meeting: 3 points for your first goal, 2 for your second, 1 for your third. ",
-        el("button", { type: "button", class: "linkbtn", text: "See how issues are ranked", onclick: () => P.go("dev", { focus: "signal" }) })),
-      el("p", { class: "hint", text: "Other teams never see your ranking. Participants' ranking is optional and doesn't change rankings yet. Add it if you know it, for example from a debrief." }),
+      el("h3", { text: "Your study's goals" }),
+      el("p", {}, "Problems your team reports rank higher at the dev meeting when they threaten your top 3 researcher goals. ",
+        info(el("span", {}, "3 points for your first goal, 2 for your second, 1 for your third. ",
+          el("button", { type: "button", class: "linkbtn", text: "See how problems are ranked", onclick: () => P.go("dev", { focus: "signal" }) })), "How much")),
+      el("p", { class: "hint", text: "Other teams never see your ranking. Participants' goals are optional and don't affect rankings yet." }),
       goalDefs(),
       el("div", { class: "grid2" }, rr.el, pr.el),
       canRank ? el("div", { class: "bar" },
@@ -292,16 +323,28 @@
         } }), goalStatus)
         : el("p", { class: "hint", text: "Only the study lead ranks the goals." }));
 
+    /* Four panels save separately: say which ones have changes not saved yet (fresh-eyes review). */
+    [[setupPanel, setupStatus], [popPanel, popStatus], [showPanel, showStatus], [goalsPanel, goalStatus]].forEach(([panel, status]) => {
+      const mark = e => { if (e.target && e.target.matches && e.target.matches("input, select, textarea")) status.textContent = "Not saved yet."; };
+      panel.addEventListener("change", mark);
+      panel.addEventListener("input", mark);
+    });
+
     /* Members, tallies */
     const membersHost = el("div", {}, membersList(studyId));
     const membersPanel = el("div", { class: "panel" }, el("h3", { text: "People in this study" }),
-      el("p", { class: "hint", text: "The platform team adds people and sets their roles. Ask them to make a change." }), membersHost);
+      el("p", { class: "hint", text: "To add someone or change a role, ask the platform team." }), membersHost);
+    const reportsHost = el("div", {}, reportsList(studyId));
+    const reportsPanel = el("div", { class: "panel" }, el("h3", { text: "Your study's reports" }),
+      el("p", { class: "hint", text: "Only your study and the platform team see these." }), reportsHost);
     const talliesHost = el("div", {}, talliesTable());
-    const talliesPanel = el("div", { class: "panel" }, el("h3", { text: "How studies rank goals" }),
-      el("p", { class: "hint", text: "Counts across all studies. No study is named." }), talliesHost);
+    /* Shown only once there are totals: an empty box explaining a privacy threshold helps no one. */
+    const talliesPanel = el("div", { class: "panel", hidden: !hasTallies() }, el("h3", { text: "How studies rank goals" }),
+      el("p", { class: "hint", text: "Totals across all studies. No study is named." }), talliesHost);
 
-    sec.replaceChildren(...[head(!canEdit), studyPicker(), overview, setupPanel, popPanel, showPanel, goalsPanel, membersPanel, talliesPanel].filter(Boolean));
-    st.refs = { skip, membersHost, talliesHost };
+    sec.replaceChildren(...[head(!canEdit), studyPicker(), overview, setupPanel, popPanel, showPanel, goalsPanel, reportsPanel, membersPanel, talliesPanel].filter(Boolean));
+    st.refs = { skip, membersHost, talliesHost, talliesPanel, reportsHost };
+    st.repSig = (S.reports || []).filter(r => r.studyId === studyId).map(r => r.id + ":" + (r.updated || "")).join("|");
   }
 
   P.register({
@@ -328,7 +371,11 @@
     if (!st.refs) return;
     st.refs.skip.textContent = skipLine(st.builtFor);
     st.refs.membersHost.replaceChildren(membersList(st.builtFor));
+    /* Rebuild the reports list only when it changed, so an open report stays open. */
+    const repSig = (S.reports || []).filter(r => r.studyId === st.builtFor).map(r => r.id + ":" + (r.updated || "")).join("|");
+    if (st.refs.reportsHost && repSig !== st.repSig) { st.repSig = repSig; st.refs.reportsHost.replaceChildren(reportsList(st.builtFor)); }
     st.refs.talliesHost.replaceChildren(talliesTable());
+    if (st.refs.talliesPanel) st.refs.talliesPanel.hidden = !hasTallies();
   }
 })();
 

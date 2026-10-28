@@ -7,114 +7,71 @@
   const P = window.Portal;
   const C = P.C, S = P.S, calc = P.calc, ui = P.ui;
   const el = ui.el;
+  /* Shared helpers from core, with fallbacks until core has them (D24). */
+  const info = (content, label) => (P.ui.info ? P.ui.info(content, label) : P.ui.el("details", { class: "more" }, P.ui.el("summary", { text: label || "More" }), content));
+  const nameOf = i => (P.ui.issueName ? P.ui.issueName(i) : { title: i.short || i.title || i.id, subtitle: i.short ? (i.title || "") : "" });
+  /* Plan lines a study team can read: "Why not now" only when the problem itself is Not now; a proposal's
+     not-now reason on a problem with another status is about one proposed fix, so it says so. */
+  function notNowText(plan) {
+    if (!plan.notNow) return "";
+    return (plan.notNowLabel === "Why not now: " ? "Why not now: " : "A proposed fix is on hold: ") + plan.notNow;
+  }
 
   /* ---------- page-head copy for every page ----------
-     Rules (ux-audit item 2, decided 10-27): a title, one short "when" line, at most 3 steps (folded by default).
-     Steps cover only order that the page doesn't already show. Explain an idea once per page. */
+     D24 (2026-10-28): a short title (matches the tab), a subtitle only where it helps, and how-to text only
+     where the procedure isn't obvious. That text goes behind the info button (core pageHead: {title, subtitle, info},
+     and `steps` for an ordered procedure, shown as a list behind the same button). */
   const PAGE_COPY = {
     home: {
       title: "Start here",
-      whenByRole: {
+      subtitleByRole: {
         rc: "Help participants with problems, and tell the platform team what keeps happening.",
         lead: "Keep your study's setup and goals current, and watch the problems that affect it.",
         analyst: "Troubleshoot missing data, and tell the platform team what keeps happening.",
         dev: "See what's new and get ready for the dev meeting.",
         platform: "Sort new problems and get ready for the dev meeting.",
-        none: "Ask the platform team to add you to a study. Until then, you can read the guide and the known problems."
-      },
-      stepsByRole: {
-        rc: [
-          "During a call, use Troubleshoot. Each finished run saves a session.",
-          "When a problem keeps coming up, report it from the list on this page.",
-          "Come back here to see what happened to what you sent."
-        ],
-        lead: [
-          "Keep your study setup current. It decides which troubleshooting steps show.",
-          "Rank your study's goals. The rankings weight how issues are ranked.",
-          "Report the problems that keep coming up for your study."
-        ],
-        analyst: [
-          "When data is missing, troubleshoot it step by step.",
-          "When a problem keeps coming up, report it from the list on this page.",
-          "Come back here to see what happened to what you sent."
-        ],
-        dev: [
-          "Check how many new items are waiting.",
-          "Open the dev meeting view before each meeting."
-        ],
-        platform: [
-          "Sort new problems into issues on the Admin page.",
-          "Prepare the dev meeting.",
-          "Add studies and set people's roles on the Admin page."
-        ],
-        none: [
-          "Ask the platform team to add you to a study.",
-          "Until then, you can read the troubleshooting steps and the known problems."
-        ]
+        none: "Until you're added to a study, you can read the troubleshooting steps and Known problems."
       }
     },
     guide: {
-      title: "Troubleshoot a participant",
-      when: "Use this during a call with a participant, or right after it.",
-      steps: [
-        "Pick the phone type and what the person sees.",
-        "Answer one step at a time. Tap an earlier answer to go back.",
-        "The session saves itself at the end. It holds no participant details."
-      ]
+      title: "Troubleshoot",
+      subtitle: "Use this during a call with a participant, or right after it.",
+      info: "Each run saves itself at the end. It holds no participant details."
     },
     report: {
-      title: "Report a problem for your study",
-      when: "Use this once a week, or when the same problem keeps coming up.",
-      steps: [
-        "Pick the problem. Your sessions fill in most of the rest.",
-        "Check what's filled in. Say how it affected your study.",
-        "Send it. You'll see status changes on Start here."
-      ]
+      title: "Weekly report",
+      subtitle: "Tell the platform team how a problem affected your study.",
+      info: "Your team's troubleshooting runs fill in most of it. After you send it, status changes show on Start here."
     },
     issues: {
-      title: "Check if a problem is known",
-      when: "Use this to see a problem's status and what helps.",
-      steps: [
-        "Search with the words people use.",
-        "Open a problem to see what helps, then its status.",
-        "Tap \"This affects us too\" if it matters to your study."
-      ]
+      title: "Known problems",
+      subtitle: "What helps with each problem, and where a fix stands."
     },
     study: {
-      title: "Set up your study",
-      when: "Fill this in once. Update it when your setup changes.",
-      steps: [
-        "Answer the setup questions. They decide which troubleshooting steps show.",
-        "Optional: pick population tags.",
-        "Study lead: rank your study's goals. The rankings weight how issues are ranked."
-      ]
+      title: "Your study",
+      subtitle: "Fill this in once. Update it when your setup changes."
     },
     dev: {
-      title: "Prepare the dev meeting",
-      when: "Use this before and during the dev meeting, every two weeks.",
+      title: "Dev meeting",
+      subtitle: "Use this before and during the meeting, every two weeks.",
       steps: [
-        "Open the pre-meeting report. Check what is new since the last meeting.",
-        "Discuss the ranked issues and set each status. \"Not now\" always needs a reason.",
-        "Capture each idea in four fields. The person who scopes it fills in the full card afterwards."
+        "Start with what's new since the last meeting.",
+        "Go through the ranked problems and set each status. \"Not now\" always needs a reason.",
+        "Capture each idea in four fields. Whoever scopes it fills in the full card afterwards."
       ]
     },
     admin: {
-      title: "Run the portal",
-      when: "For the platform team: studies, people, and sorting new problems.",
+      title: "Admin",
+      subtitle: "Studies, people, and sorting new problems.",
       steps: [
         "Create each study, then add its people with their roles.",
-        "Sort new problems: link each to an issue, make a new issue, or dismiss it.",
+        "Sort each new problem: link it to a known problem, make a new one, or dismiss it.",
         "Before each dev meeting, set the meeting date and the report link."
       ]
     },
     about: {
       title: "How this works",
-      when: "How a problem moves from your team to a fix, and who sees what.",
-      steps: [
-        "Read the five steps.",
-        "Check who sees what.",
-        "Answer the questions at the end, or send feedback."
-      ]
+      subtitle: "How a problem moves from your team to a fix, and who sees what."
     }
   };
   P.PAGE_COPY = PAGE_COPY;
@@ -125,23 +82,23 @@
     noStudy: "You are not in a study yet. Ask the platform team to add you.",
     probHead: "Your study's problems this week",
     probHeadLead: "Problems affecting your study",
-    probWhat: "A session is one participant. A report sums up a problem for your study, and starts filled in from your sessions. The platform team sorts new items before each dev meeting.",
-    probEmpty: "No troubleshooting sessions on a known problem in the last 7 days.",
-    probEmptyLead: "No problems linked to your study yet. They show here when your team logs sessions, reports or adds a reason on a known problem.",
+    probWhat: "One row per problem. A report tells the platform team how a problem affected your study. It starts filled in from your team's troubleshooting sessions.",
+    probEmpty: "Your team hasn't troubleshot a known problem in the last 7 days.",
+    probEmptyLead: "Nothing yet. Problems show here once your team troubleshoots, reports or marks \"This affects us too\" on one.",
     probLoading: "Loading your team's sessions.",
     pickStudy: "Pick a study in the menu at the top to see its sessions.",
     notMember: "You are not a member of this study, so you can't see its sessions.",
     sentHead: "What happened to what you sent",
-    sentWhat: "Problems your team sent that weren't in the list yet, from the last 30 days, and what the platform team did with them.",
-    sentEmpty: "Nothing new from your team in the last 30 days. When you send a problem that isn't listed, you'll see here what happened to it.",
+    sentWhat: "New problems your team sent in the last 30 days.",
+    sentEmpty: "Nothing in the last 30 days.",
     todoHead: "To do for your study",
     todoSetup: "Fill in your study setup. Until you do, the guide shows every step, even ones that don't apply.",
-    todoGoals: "Rank your study's top goals. The rankings weight how issues are ranked.",
-    newHead: "New since the last meeting",
+    todoGoals: "Rank your study's top goals. Problems that threaten them get more weight in the dev meeting.",
+    newHead: "Waiting to be sorted",
     newNotReady: "The counts aren't available yet. Ask the platform team.",
     sinceHead: "Since your last visit",
-    sinceFirst: "Changes to problems you report, troubleshoot or add a reason to will show here.",
-    sinceEmpty: "No status changes on problems you follow."
+    sinceFirst: "Status changes on problems you troubleshoot, report or mark \"This affects us too\" will show here.",
+    sinceEmpty: "No status changes since your last visit."
   };
 
   /* ---------- small helpers ---------- */
@@ -156,12 +113,15 @@
   function btn(text, key, onclick, cls) {
     return el("button", { type: "button", class: cls || "btn", "data-k": key, onclick: onclick, text: text });
   }
-  function block(head, what, id) {
+  function block(head, what, id, more) {
     const h = el("h3", { text: head, tabindex: "-1" });
     if (id) h.id = id;
-    return el("div", { class: "list" }, h, what ? el("p", { class: "hint", text: what }) : null);
+    return el("div", { class: "list" }, more ? el("div", { class: "bar home-head" }, h, info(el("p", { text: more }), "About this list")) : h,
+      what ? el("p", { class: "hint", text: what }) : null);
   }
   function lastSeenMs() { return S.user.lastSeen ? time(S.user.lastSeen) : 0; }
+  /* Issues whose plan line already shows under "Since your last visit": the row below doesn't repeat it. */
+  let planShown = new Set();
 
   /* ---------- main actions ---------- */
   function action(title, sub, key, onclick) {
@@ -182,7 +142,7 @@
       action("Check known problems", "Every problem teams have hit, and what helps.", "act:issues", () => P.go("issues", {}))
     ];
     else if (role === "analyst") acts = [
-      action("Troubleshoot missing data", "Starts the guide at \"Data is missing on your end\".", "act:data", toGuide({ entryId: "data_missing" })),
+      action("Troubleshoot missing data", "Step by step, starting from what's missing.", "act:data", toGuide({ entryId: "data_missing" })),
       action("Report a data problem", "Say how it affected your study's data.", "act:report", toReport)
     ];
     else {
@@ -213,7 +173,8 @@
   function groupLabel(g) {
     if (g.issueId) {
       const e = entries().find(x => x.issueId === g.issueId);
-      return e ? e.title : calc.issueTitle(g.issueId);
+      const iss = calc.issue(g.issueId);
+      return iss ? nameOf(iss).title : (e ? e.title : calc.issueTitle(g.issueId));
     }
     return entryTitle(g.entryId);
   }
@@ -230,7 +191,7 @@
     if (c.fixed) parts.push(c.fixed + " fixed");
     if (c.unconfirmed) parts.push(c.unconfirmed + " fix not confirmed yet");
     if (c.ended_early) parts.push(c.ended_early + " ended early");
-    if (c.new_problem) parts.push(c.new_problem + " new " + (c.new_problem === 1 ? "problem" : "problems"));
+    if (c.new_problem) parts.push(c.new_problem + " first sent as something new");
     return parts.join(", ");
   }
   function openReport(issueId, sessions) {
@@ -241,7 +202,7 @@
 
   function problemsBlock(role) {
     const isLead = role === "lead";
-    const b = block(isLead ? T.probHeadLead : T.probHead, T.probWhat);
+    const b = block(isLead ? T.probHeadLead : T.probHead, "", "", T.probWhat);
     const sid = S.studyId;
     if (!sid) { b.append(ui.empty(T.pickStudy)); return b; }
     if (!calc.isMember(sid)) { b.append(ui.empty(T.notMember)); return b; }
@@ -286,30 +247,29 @@
   }
   function problemRow(r, sid) {
     const g = r.g;
-    const title = g ? g.label : r.issue.title;
+    const title = nameOf(r.issue).title;
     const lastRep = r.reported || lastReport(sid, r.id, 0);
     const lines = [];
     if (g) lines.push(el("p", { text: "This week: " + countLine(g) + "." }));
     if (g && g.counts.not_fixed) {
       const waiting = g.sessions.filter(s => s.outcome === "not_fixed" && (!s.triage || s.triage.state === "new")).length;
       lines.push(el("p", { class: "hint", text: waiting
-        ? waiting + " not fixed " + (waiting === 1 ? "is" : "are") + " waiting for the platform team."
-        : "The platform team has seen the sessions that weren't fixed." }));
+        ? "The platform team hasn't reviewed " + (waiting === g.counts.not_fixed ? "the unfixed " + (waiting === 1 ? "one" : "ones") : waiting + " of the unfixed ones") + " yet."
+        : "The platform team has reviewed the unfixed ones." }));
     }
-    if (title !== r.issue.title) lines.push(el("p", { class: "hint", text: "Known problem: " + r.issue.title }));
     if (!g && (r.mine.r || r.mine.b)) {
       lines.push(el("p", { class: "hint", text: "Your team: " + [r.mine.r ? plural(r.mine.r, "report") : "",
-        r.mine.b ? plural(r.mine.b, "reason added", "reasons added") : ""].filter(Boolean).join(", ") + "." }));
+        r.mine.b ? "marked \"This affects us too\"" : ""].filter(Boolean).join(", ") + "." }));
     }
-    lines.push(el("p", { class: "hint", text: "Seen by " + plural(r.st.teams, "team") + " in all." }));
-    const plan = P.calc.planFor(r.issue);
-    if (plan.notNow) lines.push(el("p", { class: "hint", text: plan.notNowLabel + plan.notNow }));
+    lines.push(el("p", { class: "hint", text: "Seen by " + plural(r.st.teams, "team") + "." }));
+    const plan = planShown.has(r.id) ? {} : P.calc.planFor(r.issue);
+    if (plan.notNow) lines.push(el("p", { class: "hint", text: notNowText(plan) }));
     else if (plan.planned) lines.push(el("p", { class: "hint", text: "Planned: " + plan.planned }));
 
     const acts = [];
     if (g && !r.reported) acts.push(btn("Report this for your study", "rep:" + r.id, () => openReport(r.id, g.sessions), "btn"));
     else if (!g && !lastRep) acts.push(btn("Report this for your study", "rep:" + r.id, () => openReport(r.id, null), "btn ghost"));
-    acts.push(btn("Open the issue", "open:" + r.id, () => P.go("issues", { issueId: r.id }), "btn ghost"));
+    acts.push(btn("Open the issue", "open:" + r.id, () => P.go("issues", { issueId: r.id }), acts.length ? "linkbtn" : "btn ghost"));
 
     return el("div", { class: "panel" },
       el("div", { class: "bar" }, el("h3", { text: title }), ui.statusChip(r.issue.status),
@@ -338,13 +298,13 @@
     const iid = it.kind === "report" ? (rec.linkedIssueId || "") : effIssue(rec);
     const issue = iid ? calc.issue(iid) : null;
     if (tri.state === "dismissed") return { text: "Closed by the platform team.", issue: null, at: tri.at };
-    if (tri.state === "linked" && issue) return { text: "Matched to: " + issue.title, issue: issue, at: tri.at };
-    if (issue && issue.status === "needs-detail") return { text: "The platform team needs more detail on: " + issue.title, issue: issue, at: issue.statusChangedAt };
+    if (tri.state === "linked" && issue) return { text: "Matched to: " + nameOf(issue).title, issue: issue, at: tri.at };
+    if (issue && issue.status === "needs-detail") return { text: "The platform team needs more detail on: " + nameOf(issue).title, issue: issue, at: issue.statusChangedAt };
     if (tri.state === "new" || !tri.state) {
       return { text: "Waiting for the platform team. They sort new items before each dev meeting." +
-        (issue ? " Known problem: " + issue.title + "." : ""), issue: issue, at: null };
+        (issue ? " Known problem: " + nameOf(issue).title + "." : ""), issue: issue, at: null };
     }
-    return { text: issue ? "Known problem: " + issue.title : "No action needed.", issue: issue, at: null };
+    return { text: issue ? "Known problem: " + nameOf(issue).title : "No action needed.", issue: issue, at: null };
   }
   function sentBlock() {
     const b = block(T.sentHead, T.sentWhat);
@@ -359,7 +319,7 @@
       const what = it.kind === "report"
         ? "Report: " + (rec.newTitle || "Something new")
         : (rec.outcome === "new_problem"
-          ? "Something else: " + ((rec.newProblem && rec.newProblem.what) || entryTitle(rec.entryId))
+          ? ((rec.newProblem && rec.newProblem.what) || entryTitle(rec.entryId))
           : entryTitle(rec.entryId) + " (not fixed)");
       const stt = sentState(it);
       const changed = last && stt.at && time(stt.at) > last;
@@ -401,9 +361,8 @@
     if (!c) { b.append(el("p", { class: "hint", text: S.agg.ready ? "Nothing is waiting." : T.newNotReady })); return b; }
     const waiting = (c.notFixed || 0) + (c.newProblems || 0) + (c.newReports || 0);
     b.append(el("p", { text: waiting
-      ? "Open now across all teams: " + calc.triageLine(c) + ". " + plural(c.sessions7 || 0, "session") + " in all in the last 7 days."
-      : "Nothing is waiting to be sorted. " + plural(c.sessions7 || 0, "session") + " in the last 7 days." }));
-    b.append(el("p", { class: "hint", text: "Study names are never shown here." }));
+      ? calc.triageLine(c) + ", across all teams. " + plural(c.sessions7 || 0, "session") + " in all in the last 7 days."
+      : "Nothing right now. " + plural(c.sessions7 || 0, "session") + " in the last 7 days." }));
     return b;
   }
 
@@ -425,7 +384,6 @@
       }
     });
     rows.sort((x, y) => time(y.at) - time(x.at));
-    b.append(el("p", { class: "hint", text: "Status changes on problems you reported, troubleshot or marked \"This affects us too\", since " + ui.fmtDate(last) + "." }));
     if (!rows.length) {
       /* Point to "What happened to what you sent" only where that section shows: study roles, in their own study. */
       const role = calc.homeRole();
@@ -433,19 +391,22 @@
       b.append(ui.empty(T.sinceEmpty + (sorted ? " " + plural(sorted, "item") + " your team sent " + (sorted === 1 ? "was" : "were") + " sorted. See \"" + T.sentHead + "\"." : "")));
       return b;
     }
+    b.append(el("p", { class: "hint", text: "Status changes on problems you reported, troubleshot or marked \"This affects us too\", since " + ui.fmtDate(last) + "." }));
     const list = el("ul", { class: "clean home-sent" });
     rows.forEach(r => {
       const i = r.issue;
+      const plan = P.calc.planFor(i);
+      if (plan.notNow || plan.planned) planShown.add(i.id);
       list.append(el("li", {},
-        el("strong", { text: i.title }),
+        el("strong", { text: nameOf(i).title }),
         el("div", { class: "bar" },
           el("span", { class: "hint", text: "Now" }), ui.statusChip(r.to),
           r.from ? el("span", { class: "hint", text: "was" }) : null,
           r.from ? ui.statusChip(r.from) : null,
           el("span", { class: "hint", text: ui.ago(r.at) }),
           btn("Open the issue", "since:" + i.id, () => P.go("issues", { issueId: i.id }), "linkbtn")),
-        P.calc.planFor(i).notNow ? el("span", { class: "hint", text: P.calc.planFor(i).notNowLabel + P.calc.planFor(i).notNow }) : null,
-        !P.calc.planFor(i).notNow && P.calc.planFor(i).planned ? el("span", { class: "hint", text: "Planned: " + P.calc.planFor(i).planned }) : null));
+        plan.notNow ? el("span", { class: "hint", text: notNowText(plan) }) : null,
+        !plan.notNow && plan.planned ? el("span", { class: "hint", text: "Planned: " + plan.planned }) : null));
     });
     b.append(list);
     return b;
@@ -455,9 +416,10 @@
   function build() {
     const role = calc.homeRole();
     const copy = PAGE_COPY.home;
-    const key = copy.stepsByRole[role] ? role : "none";
+    const key = copy.subtitleByRole[role] ? role : "none";
+    planShown = new Set();
     const parts = [
-      ui.pageHead({ title: copy.title, when: copy.whenByRole[key], steps: copy.stepsByRole[key] }),
+      ui.pageHead({ title: copy.title, subtitle: copy.subtitleByRole[key] }),
       role ? null : el("p", { class: "notice", text: S.user.memberships.length ? T.noRole : T.noStudy }),
       actionsFor(role)
     ];

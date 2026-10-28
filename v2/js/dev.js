@@ -8,6 +8,8 @@
   const P = window.Portal;
   const { C, S, calc, store, ui } = P;
   const el = ui.el;
+  /* Info button from core (hover, tap, keyboard); a plain fold until core has it. */
+  const info = (content, label) => (P.ui.info ? P.ui.info(content, label) : P.ui.el("details", { class: "more" }, P.ui.el("summary", { text: label || "More" }), content));
 
   const DEC = { explore: "Explore: someone scopes it", go: "Go", conditions: "Go with conditions", scope: "Needs scoping first", "not-now": "Not now" };
   const TOP_N = 10;
@@ -94,10 +96,9 @@
       out.push(el("p", {}, el("a", { href: m.reportUrl.trim(), target: "_blank", rel: "noopener noreferrer", class: "dev-report", text: "Open the latest pre-meeting report" }),
         m.updatedAt ? el("span", { class: "hint", text: " Link added " + ui.fmtDate(m.updatedAt) + "." }) : null));
     } else {
-      out.push(el("p", { class: "hint", text: (st.meetingTried ? "No link to the pre-meeting report yet. " : "Loading the meeting details. ") +
-        "This week's file should be " + expected + "." }));
+      out.push(el("p", { class: "hint", text: !st.meetingTried ? "Loading the meeting details." :
+        "No pre-meeting report linked yet." + (S.user.isAdmin ? " This week's file is " + expected + "." : " The platform team adds it before each meeting.") }));
       if (S.user.isAdmin) out.push(el("div", { class: "bar" }, el("button", { type: "button", class: "btn ghost", text: "Add the report link on the Admin page", onclick: () => P.go("admin", { focus: "meeting" }) })));
-      else out.push(el("p", { class: "hint", text: "The platform team adds the link before each meeting." }));
     }
     if (m.lastMeeting) out.push(el("p", { class: "hint", text: "Last meeting: " + ui.fmtDate(m.lastMeeting) + "." }));
     return out;
@@ -108,7 +109,7 @@
     const since = sinceMs();
     const out = [];
     const tc = S.agg.triageCounts;
-    if (tc) out.push(el("p", { class: "hint", text: "Open now across all teams: " + calc.triageLine(tc) + "." }));
+    if (tc) out.push(el("p", { class: "hint", text: "Not sorted yet, all teams: " + calc.triageLine(tc) + "." }));
 
     if (S.user.isAdmin) {
       const all = S.sessions.filter(x => Date.parse(x.created) >= since);
@@ -151,14 +152,14 @@
           el("td", { class: "num", text: String(g.teams.size) })))))));
       const open = (tc ? tc.notFixed + tc.newProblems + tc.newReports : 0);
       out.push(el("div", { class: "bar" }, el("button", { type: "button", class: "btn ghost",
-        text: open ? "Sort the " + open + " open items on the Admin page" : "Open the Admin page", onclick: () => P.go("admin", { focus: "triage" }) })));
+        text: open ? "Sort the " + open + " unsorted items on the Admin page" : "Open the Admin page", onclick: () => P.go("admin", { focus: "triage" }) })));
       return out;
     }
 
     if (!canDev()) { out.push(el("p", { class: "hint", text: "Developers and the platform team see the open items here." })); return out; }
     const items = (S.agg.triageItems || []).filter(t => Date.parse(t.at) >= since);
-    if (!items.length) { out.push(ui.empty("No open items since " + ui.fmtDate(st.since) + ".")); return out; }
-    out.push(el("p", { class: "hint", text: "Open items only. The platform team links them to issues before the meeting." }));
+    if (!items.length) { out.push(ui.empty("Nothing new to sort since " + ui.fmtDate(st.since) + ".")); return out; }
+    out.push(el("p", { class: "hint", text: "The platform team links each one to an issue before the meeting." }));
     out.push(el("ul", { class: "clean" }, items.map(t => el("li", {},
       (t.kind === "report" ? "Report, something new: " + (t.title || "no title") + (t.symptom ? ". " + t.symptom : "")
         : (t.outcome === "new_problem" ? "Session, something else: " + (t.what || "no description")
@@ -168,14 +169,29 @@
   }
 
   /* ---------- 2. Ranked issues ---------- */
+  /* Workarounds linked to an issue, in every tier (D24: "Workaround known" needs one to show). */
+  function workaroundCount(issue) {
+    if (typeof calc.workarounds !== "function") return (issue.workarounds || []).length;
+    const w = calc.workarounds(issue);
+    return ["platform", "confirmed", "team", "guide"].reduce((a, k) => a + ((w[k] || []).length), 0);
+  }
+
+  /* D24: "Workaround known" always comes with the workaround: a link to it on Known problems. */
+  function workaroundLink(issue) {
+    if (issue.status !== "workaround") return null;
+    const n = workaroundCount(issue);
+    return n ? el("div", {}, el("button", { type: "button", class: "linkbtn", text: "What helps (" + n + ")", onclick: () => P.go("issues", { issueId: issue.id }) }))
+      : el("div", { class: "hint", text: "No workaround linked yet." });
+  }
+
   function statusCell(issue, row) {
-    if (!S.user.isAdmin) return ui.statusChip(issue.status);
+    if (!S.user.isAdmin) return el("div", {}, ui.statusChip(issue.status), workaroundLink(issue));
     const wrap = el("div", { class: "list dev-status" });
     const sel = ui.select(Object.entries(C.STATUS), issue.status, { "aria-label": "Status for " + issue.title });
     const msg = statusLine();
     let undoTimer = null;
     function release() { clearTimeout(undoTimer); delete row.dataset.busy; refresh(); }
-    function reset() { delete row.dataset.busy; put(wrap, sel, msg, publicSummary(issue, row)); sel.value = issue.status; }
+    function reset() { delete row.dataset.busy; put(wrap, sel, workaroundLink(issue), msg, publicSummary(issue, row)); sel.value = issue.status; }
     async function save(partial, prev) {
       msg.textContent = "Saving...";
       try {
@@ -195,8 +211,25 @@
         undoTimer = setTimeout(release, 8000);
       } catch (e) { msg.textContent = P.writeError(e); sel.value = issue.status; delete row.dataset.busy; }
     }
+    /* D24: "Workaround known" can't be set on an issue with no workaround. Ask for one, which is saved
+       with the status as a platform team workaround that every team sees. */
+    function askWorkaround(prev) {
+      row.dataset.busy = "1";
+      const text = el("input", { type: "text", maxlength: "300", "aria-label": "Workaround for " + issue.title, placeholder: "What to do for now" });
+      const m = statusLine();
+      put(wrap, sel, ui.field("The workaround (every team sees it)", text, "This issue has no workaround yet. Add one to set this status."),
+        el("div", { class: "bar" },
+          el("button", { type: "button", class: "mini", text: "Save workaround and status", onclick: () => {
+            const t = text.value.trim();
+            if (!t) { m.textContent = "Add the workaround first."; text.focus(); return; }
+            save({ status: "workaround", workarounds: (issue.workarounds || []).concat([t]) }, prev);
+          } }),
+          el("button", { type: "button", class: "mini", text: "Cancel", onclick: reset }), m), msg);
+      text.focus();
+    }
     sel.addEventListener("change", () => {
       const prev = issue.status;
+      if (sel.value === "workaround" && !workaroundCount(issue)) { askWorkaround(prev); return; }
       if (sel.value !== "not-now") { save({ status: sel.value }, prev); return; }
       row.dataset.busy = "1";
       const reason = el("input", { type: "text", maxlength: "300", "aria-label": "Reason for Not now", placeholder: "One-line reason" });
@@ -211,7 +244,9 @@
       reason.value = issue.notNowReason || "";
       reason.focus();
     });
+    const wl = workaroundLink(issue);
     wrap.append(sel, msg, publicSummary(issue, row));
+    if (wl) wrap.insertBefore(wl, msg);
     return wrap;
   }
 
@@ -222,7 +257,7 @@
     const m = statusLine();
     const d = el("details", {},
       el("summary", { class: "hint", text: "Edit what teams see" }),
-      ui.field("Status note", note),
+      ui.field("Status note", note, "Every team sees this under the status."),
       ui.field("What's planned, in one plain line", planned, "Every team sees this on the issue. No study names."),
       el("div", { class: "bar" }, el("button", { type: "button", class: "mini", text: "Save what teams see", onclick: async () => {
         m.textContent = "Saving...";
@@ -233,7 +268,21 @@
     return d;
   }
 
-  /* "Prevented a task: 1 report x 2 points = 2". */
+  /* A report's answers to one question as a list (D24: impact answers may be arrays). Core's reader when
+     it exists; else a single value is a one-item list. */
+  function answersOf(rep, key) {
+    if (typeof calc.answers === "function") return calc.answers(rep, key);
+    const v = rep ? rep[key] : null;
+    return Array.isArray(v) ? v.filter(Boolean) : (v === null || v === undefined || v === "" ? [] : [v]);
+  }
+  /* Most severe answer's points in one question (ticking more boxes doesn't raise severity), or null. */
+  function topPts(rep, key, pts) {
+    const p = answersOf(rep, key).filter(a => Object.prototype.hasOwnProperty.call(pts, a)).map(a => pts[a]);
+    return p.length ? Math.max.apply(null, p) : null;
+  }
+  function tallySum(t) { return Object.values(t || {}).reduce((a, n) => a + (Number(n) || 0), 0); }
+
+  /* "Prevented a task: 1 answer x 2 points = 2". The tallies count every answer chosen (D24). */
   function tallyText(t, names, pts) {
     if (!t) return "";
     return Object.entries(t).sort((a, b) => b[1] - a[1]).map(([k, n]) => (names[k] || k) + ": " + plural(n, "report") + " x " +
@@ -253,9 +302,19 @@
       sev = "Based on " + plural(s.sevN, "team report") + (sc.sevStudies ? " from " + plural(sc.sevStudies, "team") : "") + ".";
       if (sc.stops) sev += " What it stopped: " + tallyText(sc.stops, C.IMPACT_LABEL.stops, C.STOP_PTS) + ". Total " + sp + ".";
       if (sc.data) sev += " What it did to the data: " + tallyText(sc.data, C.IMPACT_LABEL.data, C.DATA_PTS) + ". Total " + dp + ".";
-      if (sc.stops || sc.data) sev += " (" + sp + " + " + dp + ") / " + plural(s.sevN, "report") + " = " + fmt(s.sev) + ".";
+      /* The sum of the tallies equals the per-report severities only while each report has one answer per
+         question. With several answers, each report counts its most severe answer in each question. */
+      const oneEach = tallySum(sc.stops) === s.sevN && tallySum(sc.data) === s.sevN;
+      if ((sc.stops || sc.data) && oneEach) sev += " (" + sp + " + " + dp + ") / " + plural(s.sevN, "report") + " = " + fmt(s.sev) + ".";
+      else if (sc.stops || sc.data) {
+        const reps = S.reports.filter(r => (r.linkedIssueId || r.issueId) === i.id && !r.security && counted(r));
+        const per = reps.map(r => [topPts(r, "stops", C.STOP_PTS), topPts(r, "data", C.DATA_PTS)]).filter(([a, b]) => a !== null && b !== null);
+        sev += " Some reports chose more than one answer; each report counts only its most severe answer in each question.";
+        if (per.length === s.sevN) sev += " Per report: " + per.map(([a, b]) => a + " + " + b).join(", ") + ". Average: " + fmt(s.sev) + ".";
+        else sev += " Average over " + plural(s.sevN, "report") + ": " + fmt(s.sev) + ".";
+      }
     } else {
-      sev = "Starter rating: no team has reported it yet. " + (C.STOPS[i.stops] || "Not rated") + " (" + plural(C.STOP_PTS[i.stops] || 0, "point") + ") + " +
+      sev = "First estimate: no team reports yet. " + (C.STOPS[i.stops] || "Not rated") + " (" + plural(C.STOP_PTS[i.stops] || 0, "point") + ") + " +
         (C.DATA[i.data] || "not rated") + " (" + plural(C.DATA_PTS[i.data] || 0, "point") + ") = " + fmt(s.sev) + ". The platform team set it from earlier records. Team reports replace it.";
     }
     if (s.sessions) {
@@ -266,7 +325,8 @@
     /* Breadth */
     const before = Number(i.teams) || 0;
     parts.push(["Breadth", calc.breadth(s.teams), plural(s.teams, "team") + ": " + before + " from records before the portal, " +
-      s.portalTeams + " through the portal (reports or sessions). 1 team = 1, 2 to 3 = 2, 4 to 6 = 3, 7 or more = 4."]);
+      s.portalTeams + " through the portal (reports or sessions). " + (s.teams ? "" : "No team yet still counts as 1. ") +
+      "1 team = 1, 2 to 3 = 2, 4 to 6 = 3, 7 or more = 4."]);
     /* Boosts */
     parts.push(["This affects us too", Math.min(s.boosts, 3), plural(s.boosts, "person", "people") + " said \"This affects us too\". Counts up to 3."]);
     /* Recent reports */
@@ -281,7 +341,7 @@
           .map(([p, n]) => plural(n, "study", "studies") + ": " + (lab[p] || p + " points")).join(". ") + ".";
       }
     } else if (s.goalHidden) {
-      goal = "Applied, but shown only to developers and the platform team while fewer than 3 studies reported it, so no study's goal ranking can be worked out. Not included in the signal you see.";
+      goal = "Hidden until 3 or more studies report it, so no study's goals can be worked out. Your score leaves it out, so it can be lower than the developers' score.";
     } else {
       goal = "No study that reported it has ranked its goals yet.";
     }
@@ -294,7 +354,7 @@
     const d = el("details", { class: "dev-trace" },
       el("summary", { text: "How this score was computed" }),
       el("ul", { class: "clean" }, parts.map(([name, val, why]) => el("li", {}, el("b", { text: name + ": " + fmt(val) + ". " }), why))),
-      el("p", { class: "dev-sum", text: "Signal = " + parts.map(p => fmt(p[1])).join(" + ") + " = " + fmt(s.signal) }));
+      el("p", { class: "dev-sum", text: "Score = " + parts.map(p => fmt(p[1])).join(" + ") + " = " + fmt(s.signal) }));
     if (st.openTrace.has(i.id)) d.open = true;
     d.addEventListener("toggle", () => { if (d.open) st.openTrace.add(i.id); else st.openTrace.delete(i.id); });
     return d;
@@ -312,19 +372,21 @@
         traceBlock(i, s)),
       el("td", {}, statusCell(i, row)),
       el("td", { class: "num" }, el("b", { text: fmt(s.signal) })),
-      el("td", { class: "num" }, fmt(s.sev), (() => { const w = calc.sevWords(i, s); return el("div", { class: "hint", text: (w.words ? w.words + " " : "") + w.source }); })()),
+      /* The number in the cell, the words behind an info button, so the table fits (fresh-eyes review). */
+      el("td", { class: "num" }, fmt(s.sev), s.sevFrom !== "reports" ? el("span", { class: "hint", text: " est." }) : null, " ",
+        (() => { const w = calc.sevWords(i, s); return info(el("span", { text: (w.words ? w.words + " " : "") + w.source }), "Severity for " + i.title); })()),
       el("td", { class: "num" }, String(s.teams), (Number(i.teams) || 0) ? el("div", { class: "hint", text: (Number(i.teams) || 0) + " before the portal" }) : null),
       el("td", { class: "num", text: String(s.sessions) }),
       el("td", { class: "num", text: String(s.boosts) }),
       el("td", { class: "num", text: String(s.recent) }),
-      el("td", { class: "num" }, s.goalHidden ? "Hidden" : fmt(s.goal), s.goalN ? el("div", { class: "hint", text: s.goalHidden ? "Fewer than 3 studies" : plural(s.goalN, "study", "studies") }) : null));
+      el("td", { class: "num" }, s.goalHidden ? "Hidden" : fmt(s.goal), s.goalN ? el("div", { class: "hint", text: s.goalHidden ? "Under 3 studies" : plural(s.goalN, "study", "studies") }) : null));
     return row;
   }
 
   function newRows() {
     if (S.user.isAdmin) {
       return S.reports.filter(r => r.issueId === "new" && !r.linkedIssueId && triageState(r) !== "dismissed" && triageState(r) !== "linked" && counted(r))
-        .map(r => ({ id: r.id, title: r.newTitle || "no title", sev: (C.STOP_PTS[r.stops] || 0) + (C.DATA_PTS[r.data] || 0), security: !!r.security }));
+        .map(r => ({ id: r.id, title: r.newTitle || "no title", sev: (topPts(r, "stops", C.STOP_PTS) || 0) + (topPts(r, "data", C.DATA_PTS) || 0), security: !!r.security }));
     }
     return (S.agg.triageItems || []).filter(t => t.kind === "report").map(t => ({ id: t.id, title: t.title || "no title", sev: null }));
   }
@@ -332,7 +394,7 @@
   function newRow(n) {
     return el("tr", { class: "dev-new" },
       el("td", {}, "New, not sorted yet: " + n.title, n.security ? el("span", {}, " ", ui.chip("Security", "sev hi")) : null),
-      el("td", {}, ui.statusChip("heard")),
+      el("td", {}, ui.chip("Not sorted", "status-none")),
       el("td", { class: "num", text: "-" }),
       el("td", { class: "num" }, n.sev === null ? "Not sorted yet" : String(n.sev), n.sev === null ? null : el("div", { class: "hint", text: "This report only" })),
       el("td", { class: "num", text: "1" }), el("td", { class: "num", text: "0" }),
@@ -353,7 +415,7 @@
     const results = el("div", { class: "dev-results" });
     function words(t) { return String(t || "").toLowerCase().split(/\s+/).filter(Boolean); }
     function drawChips() {
-      if (!chosen.size) { put(chips, el("span", { class: "hint", text: "No issues yet. That's fine for a contributor idea with no study report." })); return; }
+      if (!chosen.size) { put(chips, el("span", { class: "hint", text: "None added. Fine for an idea no study has reported." })); return; }
       put(chips, Array.from(chosen).map(id => el("span", { class: "chip dev-chip" }, calc.issueTitle(id) || id,
         el("button", { type: "button", class: "dev-x", "aria-label": "Remove " + (calc.issueTitle(id) || id), text: "Remove", onclick: () => {
           chosen.delete(id); drawChips(); drawResults(); search.focus();
@@ -370,7 +432,7 @@
         .map(i => ({ i, sig: calc.stats(i).signal })).sort((a, b) => b.sig - a.sig).slice(0, q.length ? 8 : 5);
       put(results,
         el("span", { class: "hint", text: q.length ? (list.length ? "Tap to add:" : "No issue matches. Try other words.") : "Top issues, or type to search:" }),
-        list.map(x => el("button", { type: "button", class: "mini dev-add", text: "Add: " + x.i.title, onclick: () => {
+        list.map(x => el("button", { type: "button", class: "mini dev-add", text: "Add: " + x.i.title + " (score " + fmt(x.sig) + ")", onclick: () => {
           chosen.add(x.i.id); search.value = ""; drawChips(); drawResults(); search.focus();
         } })));
     }
@@ -406,7 +468,7 @@
     const radios = [["explore", "Explore"], ["not-now", "Not now"]].map(([v, t]) =>
       el("label", { class: "dev-choice" }, el("input", { type: "radio", name: decName, value: v, checked: v === "explore" }), t));
     const reason = el("input", { type: "text", maxlength: "300", placeholder: "One line" });
-    const reasonField = ui.field("Why not now", reason, "Study teams see this line on the issue. No study names.");
+    const reasonField = ui.field("Why not now", reason, "Teams see this on the issue. Write it to make sense on its own: why it waits, and what would change that. No study names.");
     const scoper = el("input", { type: "text", maxlength: "80", list: "dev-names", value: S.user.name || "" });
     const scoperField = ui.field("Who scopes it", scoper, "They fill in the full card after the meeting.");
     const names = nameList("dev-names");
@@ -452,10 +514,18 @@
     const notNow = el("input", { type: "text", maxlength: "300", value: p.notNowReason || (p.decision === "not-now" ? p.reason || "" : "") });
     const box = el("fieldset", { class: "dev-public" },
       el("legend", { text: "What study teams see on the issue" }),
-      el("p", { class: "hint", text: "Only these lines leave the developers and the platform team. Write them fresh, in plain words. No study names, no internal notes." }),
+      el("p", { class: "hint", text: "Every team sees these lines on the issue. Plain words, no study names, no internal notes." }),
       ui.field("What's planned, in one line (optional)", planned),
       ui.field("Why not now (needed for \"Not now\")", notNow));
     return { box, planned, notNow };
+  }
+
+  /* Red zone (dev-meeting-process): no Go until there is a written test plan and a named owner and reviewer.
+     Returns what is missing, or "". */
+  function redZoneGap(rec) {
+    if (rec.zone !== "red" || (rec.decision !== "go" && rec.decision !== "conditions")) return "";
+    const miss = [!String(rec.test || "").trim() ? "a test plan" : "", !String(rec.owner || "").trim() ? "an owner and reviewer" : ""].filter(Boolean);
+    return miss.length ? "A red-zone change needs " + miss.join(" and ") + " before Go." : "";
   }
 
   /* ---------- 3b. Full proposal card (afterwards, by the person who scopes it) ---------- */
@@ -489,8 +559,8 @@
 
     const form = el("form", { class: p.id ? "list" : "panel", novalidate: true },
       el("h3", { text: p.id ? "Full proposal card" : "Write a full proposal card" }),
-      el("p", { class: "hint", text: p.id ? "Fill this in after the meeting. It feeds the working spec. Developers and the platform team see it." : "For an idea that didn't come through the meeting, for example from a contributor." }),
-      el("div", { class: "grid2" }, ui.field("What", what), ui.field("Proposed by", by)),
+      el("p", { class: "hint", text: p.id ? "Fill in after the meeting. Only developers and the platform team see it." : "For an idea that didn't come through the meeting, for example from a contributor." }),
+      el("div", { class: "grid2" }, ui.field("The idea", what), ui.field("Proposed by", by)),
       el("div", { class: "field" }, el("span", { text: "Issues it helps" }), issues.el),
       el("fieldset", {}, el("legend", { text: "What it touches" }), zones, zoneOut),
       el("div", { class: "grid2" },
@@ -520,6 +590,8 @@
       if (!rec.what) { msg.textContent = "Describe the idea first."; what.focus(); return; }
       if (rec.decision === "not-now" && !rec.notNowReason) { msg.textContent = "\"Not now\" needs a reason for study teams."; pub.notNow.focus(); return; }
       if (rec.specUrl && !isHttp(rec.specUrl)) { msg.textContent = "The spec link must start with https://"; spec.focus(); return; }
+      const redGap = redZoneGap(rec);
+      if (redGap) { msg.textContent = redGap; (rec.test ? owner : test).focus(); return; }
       msg.textContent = "Saving...";
       try {
         if (p.id) await store.patch("proposals/" + p.id, rec); else await store.add("proposals", rec);
@@ -542,23 +614,33 @@
     const cond = p.conditions || (p.decision !== "not-now" ? p.reason : "");
     function view() {
       delete box.dataset.busy;
-      const helps = (p.issues || []).map(id => calc.issueTitle(id)).join("; ") || "Contributor need, no study report yet";
+      /* Each linked issue with its score and team count, so the idea can be weighed here (dev-meeting-process). */
+      const helps = (p.issues || []).map(id => {
+        const iss = calc.issue(id);
+        if (!iss) return calc.issueTitle(id);
+        const s2 = calc.stats(iss);
+        return calc.issueTitle(id) + " (score " + fmt(s2.signal) + ", " + plural(s2.teams, "team") + ")";
+      }).join("; ") || "Contributor need, no study report yet";
       const strip = t => String(t || "").trim().replace(/[.!]+$/, "");
-      const seen = [p.planned ? "Planned: " + strip(p.planned) : "", p.decision === "not-now" && nnr ? "Why not now: " + strip(nnr) : ""].filter(Boolean);
+      /* Preview with the label teams actually read (calc.planFor): on an issue that isn't itself Not now,
+         a card's reason shows under a different label than "Why not now". */
+      const firstIssue = (p.issues || []).map(id => calc.issue(id)).filter(Boolean)[0];
+      const nnLabel = (firstIssue && firstIssue.status !== "not-now" && calc.planFor(firstIssue).notNowLabel) || "Why not now: ";
+      const seen = [p.planned ? "Planned: " + strip(p.planned) : "", p.decision === "not-now" && nnr ? nnLabel + strip(nnr) : ""].filter(Boolean);
       /* What Start here and the guide actually show (calc.planFor): the issue's own line, or a newer card's,
          can come first. Say so, so nobody thinks teams see a line they don't. */
       const differs = (p.issues || []).map(id => calc.issue(id)).filter(Boolean).map(i => ({ i, f: calc.planFor(i) }))
         .filter(x => p.planned && x.f.planned && calc.norm(x.f.planned) !== calc.norm(p.planned));
       put(box,
         el("div", { class: "bar" }, el("h3", { text: p.what || "No title" }),
-          p.stage === "captured" ? ui.chip("Needs a full card", "unconfirmed") : null,
+          p.stage === "captured" && p.decision !== "not-now" ? ui.chip("Needs a full card", "unconfirmed") : null,
           p.decision ? ui.chip(DEC[p.decision] || p.decision, p.decision === "not-now" ? "status-not-now" : p.decision === "scope" ? "status-scoping" : "status-in-progress") : null,
           p.zone ? ui.chip(p.zone === "red" ? "Red zone" : p.zone === "yellow" ? "Yellow zone" : "Green zone", p.zone === "red" ? "sev hi" : "sev") : null),
         el("p", { class: "hint", text: [p.by ? "Proposed by " + p.by : "", p.scoper ? "Scoped by " + p.scoper : "", p.size ? "Size " + p.size : "",
           p.owner ? "Owner and reviewer: " + p.owner : "", ui.fmtDate(p.created)].filter(Boolean).join(". ") + "." }),
         el("p", {}, el("b", { text: "Helps: " }), helps),
         el("p", { class: "dev-seen" }, el("b", { text: "Teams see on the issue: " }), seen.length ? seen.join(". ") + "." : "nothing from this card yet."),
-        differs.map(x => el("p", { class: "hint", text: "On \"" + x.i.title + "\", Start here and the guide show another line first: \"" + strip(x.f.planned) + "\". Known problems lists both." })),
+        differs.map(x => el("p", { class: "hint", text: "Teams see a different \"Planned\" line on \"" + x.i.title + "\": \"" + strip(x.f.planned) + "\". Change it under Ranked issues, Edit what teams see." })),
         cond ? el("p", {}, el("b", { text: "Conditions or notes: " }), cond) : null,
         p.test ? el("p", {}, el("b", { text: "Test plan: " }), p.test) : null,
         p.specUrl && isHttp(p.specUrl) ? el("p", {}, specLink(p.specUrl, "Open the working spec")) : null,
@@ -586,6 +668,8 @@
             const r = pub.notNow.value.trim(), u = spec.value.trim();
             if (dec.value === "not-now" && !r) { msg.textContent = "\"Not now\" needs a reason for study teams."; pub.notNow.focus(); return; }
             if (u && !isHttp(u)) { msg.textContent = "The spec link must start with https://"; spec.focus(); return; }
+            const redGap = redZoneGap(Object.assign({}, p, { decision: dec.value, owner: owner.value.trim() }));
+            if (redGap) { msg.textContent = redGap + (p.test ? "" : " Add it on the full card."); return; }
             msg.textContent = "Saving...";
             try {
               await store.patch("proposals/" + p.id, { decision: dec.value, notNowReason: dec.value === "not-now" ? r : "",
@@ -614,7 +698,7 @@
     const tbody = el("tbody");
     const newBody = el("tbody");
     const table = el("table", { class: "dev-table" },
-      el("thead", {}, el("tr", {}, ["Issue", "Status", "Signal", "Severity", "Teams", "Sessions", "Affects us too", "Reports, 30 days", "Goals"]
+      el("thead", {}, el("tr", {}, ["Issue", "Status", "Score", "Severity", "Teams", "Sessions", "Affects us too", "Reports, 30 days", "Goal weight"]
         .map(h => el("th", { scope: "col", text: h })))),
       tbody, newBody);
     const starter = el("p", { class: "notice", hidden: true });
@@ -628,33 +712,36 @@
     const propHost = el("div", { class: "list" });
 
     put(sec,
-      ui.pageHead(P.PAGE_COPY.dev),
-      el("div", { class: "panel" }, el("h3", { text: "Before the meeting" }), meetHost),
-      el("div", { class: "panel" },
+      /* Study roles come here to see how problems are ranked, not to run the meeting: the meeting how-to
+         is for developers and the platform team. */
+      dev ? ui.pageHead(P.PAGE_COPY.dev) : ui.pageHead({ title: (P.PAGE_COPY.dev || {}).title || "Dev meeting",
+        subtitle: "How the dev meeting ranks problems.", when: P.ui.info ? undefined : "How the dev meeting ranks problems." }),
+      /* Study roles see only the ranking: the report link and the unsorted items are for developers. */
+      dev ? el("div", { class: "panel" }, el("h3", { text: "Before the meeting" }), meetHost) : null,
+      dev ? el("div", { class: "panel" },
         el("h3", { text: "1. New since the last meeting" }),
         el("div", { class: "bar" }, ui.field("Show what is new since", sinceIn)),
-        sinceHost),
+        sinceHost) : null,
       el("div", { class: "panel" },
-        el("h3", { text: "2. Ranked issues" }),
-        el("p", { class: "hint", text: "The signal starts the discussion. It doesn't decide it. Open \"How this score was computed\" under any issue to check its numbers." }),
+        el("h3", { text: dev ? "2. Ranked issues" : "Ranked issues" }),
+        el("p", { class: "hint", text: "The score starts the discussion. It doesn't decide it." }),
+        dev ? null : el("p", { class: "hint", text: "What's planned for each problem, and any \"Not now\" reason, shows on Known problems." }),
         starter,
         el("label", { class: "opts" }, el("span", { class: "dev-check" }, fixedBox, "Show fixed issues")),
         el("div", { class: "scroll" }, table),
         el("div", { class: "bar" }, moreBtn),
         el("details", { class: "hint dev-formula", id: "dev-formula" },
           el("summary", { text: "The formula" }),
-          el("p", { text: "Signal = severity + breadth + this affects us too (up to 3) + reports in the last 30 days (up to 3) + goal weight." }),
+          el("p", { text: "Score = severity + breadth + \"This affects us too\" (up to 3) + reports in the last 30 days (up to 3) + goal weight." }),
           el("ul", {},
-            el("li", { text: "Severity: what it stopped plus what it did to the data, averaged over teams' reports. What it stopped: Nothing 0, Slowed someone down 1, Prevented a task 2, Led to dropout 3. What it did to the data: Nothing 0, Data missing 2, Can't tell 2, Data wrong or misleading 3. Until an issue has a report, the platform team's starter rating is used. Sessions don't record impact, so they count toward breadth only." }),
+            el("li", { text: "Severity: what it stopped plus what it did to the data, averaged over teams' reports. What it stopped: Nothing 0, Slowed someone down 1, Prevented a task 2, Led to dropout 3. What it did to the data: Nothing 0, Data missing 2, Can't tell 2, Data wrong or misleading 3. Until an issue has a report, the platform team's first estimate is used. Sessions don't record impact, so they count toward breadth only." }),
             el("li", { text: "Breadth: teams with reports or troubleshooting sessions, plus teams in records from before the portal. 1 team = 1, 2 to 3 = 2, 4 to 6 = 3, 7 or more = 4." }),
             el("li", { text: "Goal weight (0 to 3): each report's answers point to study goals. " + goalMapText() + " For each reporting study that ranked its goals: 3 if its first goal is threatened, 2 its second, 1 its third, else 0. Averaged over those studies." }),
             el("li", { text: "Test studies and admin test runs are left out of every number." })))),
       dev ? el("div", { class: "panel" },
         el("h3", { text: "3. Ideas and proposals" }),
         el("p", { class: "hint", text: "Proposal cards are for developers and the platform team. Other teams see only each issue's status, the \"What's planned\" line and any \"Not now\" reason." }),
-        quick, propCount, propHost) :
-        el("div", { class: "panel" }, el("h3", { text: "3. Ideas and proposals" }),
-          el("p", { class: "hint", text: "Proposal cards are for developers and the platform team. They hold test plans, risks and owners. You see each issue's status, what's planned and any \"Not now\" reason on the Known problems page." })),
+        quick, propCount, propHost) : null,
       fullWrap);
 
     st.h = { meetHost, sinceIn, sinceHost, tbody, newBody, starter, moreBtn, form, quick, propHost, propCount, dev };
@@ -680,8 +767,7 @@
     put(h.newBody, ...newRows().map(newRow));
     const onStarter = all.filter(x => x.s.sevFrom !== "reports").length;
     h.starter.hidden = !onStarter;
-    h.starter.textContent = onStarter + " of " + all.length + " issues still use a starter rating for severity, because no team has reported them yet. " +
-      "Starter ratings come from platform team records and are provisional.";
+    h.starter.textContent = onStarter + " of " + all.length + " issues have no team reports yet, so their severity is the platform team's first estimate.";
 
     if (!h.dev) return;
     h.quick._issues.refresh();
@@ -691,8 +777,9 @@
     if (namesSig !== h.quick._namesSig) { h.quick._names.replaceWith(names); h.quick._names = names; h.quick._namesSig = namesSig; }
     const props = S.proposals.slice().sort((a, b) =>
       ((a.stage === "captured" ? 0 : 1) - (b.stage === "captured" ? 0 : 1)) || String(b.created).localeCompare(String(a.created)));
-    const waiting = props.filter(p => p.stage === "captured").length;
-    h.propCount.textContent = props.length ? plural(props.length, "proposal") + (waiting ? ", " + waiting + " still need a full card." : ".") : "";
+    /* A captured Not now idea is complete: only Explore ideas wait for a full card (D23). */
+    const waiting = props.filter(p => p.stage === "captured" && p.decision !== "not-now").length;
+    h.propCount.textContent = props.length ? plural(props.length, "proposal") + (waiting ? ", " + waiting + (waiting === 1 ? " still needs" : " still need") + " a full card." : ".") : "";
     if (!props.length) { h.propHost._cache = null; h.propHost.replaceChildren(ui.empty("No proposals yet.")); return; }
     if (h.propHost.firstElementChild && h.propHost.firstElementChild.classList.contains("empty")) h.propHost.replaceChildren();
     keyed(h.propHost, props, p => p.id, p => String(p.updated) + (calc.issueTitle((p.issues || [])[0]) || ""), proposalItem);

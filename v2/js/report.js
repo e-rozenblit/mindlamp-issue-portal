@@ -20,7 +20,7 @@
       opts: [["none", "Nothing"], ["slowed", "Slowed someone down"], ["prevented", "Prevented a task"], ["dropout", "Led to dropout or a dropout request"]] },
     { name: "data", legend: "What did it do to the data?", required: true,
       opts: [["none", "Nothing"], ["missing", "Data missing"], ["wrong", "Data wrong or misleading"], ["unknown", "Can't tell"]] },
-    { name: "cost", legend: "Who absorbed the cost?", required: true,
+    { name: "cost", legend: "Who had to deal with it?", required: true,
       opts: [["participant", "Participants"], ["staff", "Study staff"], ["analyst", "Analysts, later"], ["nobody", "Nobody yet"]] },
     { name: "mechanism", legend: "Effect on participants (optional)", required: false,
       opts: [["motivation", "Less willing to open the app or take part"], ["ability", "Couldn't do the task"],
@@ -170,11 +170,16 @@
       }
     });
     f.sessWrap.hidden = !issueId;
+    f.rest.hidden = !issueId;
+    f.sessIntro.textContent = issueId === "new"
+      ? "Your team's \"Something else\" sessions from the last 4 weeks that aren't matched to a problem yet. Tick the ones about this."
+      : "Your team's troubleshooting sessions on this problem in the last 4 weeks. Untick any that are about something else.";
+    f.sessIntro.hidden = !list.length || !P.calc.inStudy(studyId);
     if (!issueId) { host.replaceChildren(); f.sessCount.textContent = ""; return; }
     if (!P.calc.inStudy(studyId)) { host.replaceChildren(P.ui.empty("Sessions show here for studies you belong to.")); f.sessCount.textContent = ""; return; }
     if (!list.length) {
       host.replaceChildren(P.ui.empty(issueId === "new"
-        ? "No unsorted \"Something else\" sessions from your team in the last 4 weeks. You can still report it."
+        ? "Your team has no unmatched \"Something else\" sessions in the last 4 weeks. You can still report it."
         : "Your team has no troubleshooting sessions on this in the last 4 weeks. You can still report it."));
       f.sessCount.textContent = "";
       return;
@@ -189,7 +194,7 @@
       const detail = s.outcome === "fixed" && s.fixedByText ? "Fixed by: " + s.fixedByText
         : s.outcome === "unconfirmed" && s.untestedFixText ? "Seemed to help, not checked: " + s.untestedFixText
         : s.outcome === "new_problem" && s.newProblem && s.newProblem.what ? "Seen: " + s.newProblem.what
-        : entryTitle(s.entryId);
+        : issueId === "new" ? entryTitle(s.entryId) : "";
       return el("li", {}, el("label", { class: "rp-sess" }, cb,
         el("span", {},
           el("b", { text: P.ui.fmtDate(s.created) }), " ",
@@ -205,7 +210,7 @@
     const last = lastReportAt();
     const older = last && issueId !== "new" ? list.filter(s => String(s.created || "") <= last).length : 0;
     f.sessCount.textContent = n + " of " + list.length + " sessions included." +
-      (older ? " Sessions before your last report (" + P.ui.fmtDate(last) + ") start unticked. Tick any you want to add." : "");
+      (older ? " Sessions from before your last report (" + P.ui.fmtDate(last) + ") are unticked." : "");
   }
 
   /* Guide steps that fixed the ticked sessions. They are tagged (fixSteps) and never written into
@@ -230,7 +235,7 @@
         el("span", {}, P.ui.chip("Guide step"), " ", st.text,
           el("span", { class: "hint", text: " " + (st.n === 1 ? "Fixed 1 session." : "Fixed " + st.n + " sessions.") }))));
     }));
-    f.fixLabel.textContent = steps.length ? "Anything else that helped? (optional)" : "What fixed it, if anything?";
+    f.fixLabel.textContent = steps.length ? "Anything else that helped? (optional)" : "Anything that helped? (optional)";
   }
 
   /* ---------- pre-fill ---------- */
@@ -308,9 +313,10 @@
     if (!showSummary) return;
     const n = Number(f.n.value) || 0;
     const parts = [
-      n === 1 ? "1 participant" : n + " participants",
+      (n === 1 ? "1 participant" : n + " participants") + (dirty.has("n") ? "" : " (one per session)"),
       f.week.value ? "Most recent: " + P.ui.fmtDate(f.week.value) : "",
-      label(SPAN, f.span.value) ? "Going on: " + label(SPAN, f.span.value).toLowerCase() : "",
+      /* "Not sure" is the unanswered default, so it isn't printed as if someone said it. */
+      f.span.value && f.span.value !== "unsure" ? "Going on: " + label(SPAN, f.span.value).toLowerCase() : "",
       label(RECUR, f.recur.value)
     ].filter(Boolean);
     f.scopeText.textContent = parts.join(". ") + ".";
@@ -332,8 +338,9 @@
     f.setupLines.replaceChildren(...lines.map(t => el("li", { text: t })));
     f.setupLines.hidden = !lines.length;
     f.setupFrom.textContent = st && st.setup
-      ? (lines.length ? "Change anything that was different for this problem." : "Your study setup doesn't say this yet.")
+      ? (lines.length ? "" : "Your study setup doesn't say this yet.")
       : "Your study setup isn't filled in yet. Add details below if you know them.";
+    f.setupFrom.hidden = !f.setupFrom.textContent;
   }
 
   /* ---------- study and issue ---------- */
@@ -351,7 +358,7 @@
     f.noStudy.textContent = !ids.length
       ? "You aren't in a study yet, so you can't send reports. Ask the platform team to add you."
       : P.S.user.isAdmin
-        ? "You aren't a member of this study, so you can't send its reports. Ask an admin to add you, or pick a study you belong to."
+        ? "You aren't in this study, so you can't send its reports. You can add yourself to it on the Admin page."
         : "Only members of a study can send its reports. Ask the platform team to add you.";
     f.noStudy.hidden = member;
     f.send.disabled = sending || !member;
@@ -466,7 +473,7 @@
     f.studyName = el("b", {});
     f.studyChange = el("button", { type: "button", class: "linkbtn", text: "Change study" });
     f.studyChange.addEventListener("click", () => { f.studyWrap.hidden = !f.studyWrap.hidden; if (!f.studyWrap.hidden) f.study.focus(); });
-    f.testNote = el("p", { class: "hint", text: "This is a test study. Use it to try the form. Reports here don't count toward any issue.", hidden: true });
+    f.testNote = el("p", { class: "hint", text: "Test study: reports here aren't counted.", hidden: true });
     f.noStudy = el("p", { class: "notice warn", hidden: true });
 
     /* Problem: the picker until one is chosen, then one line with "Change problem". */
@@ -490,9 +497,8 @@
     /* How many and how long */
     f.sessHost = el("div", {});
     f.sessCount = el("p", { class: "hint", role: "status" });
-    f.sessWrap = el("div", { class: "rp-sub", hidden: true },
-      el("p", { class: "hint", text: "Your team's troubleshooting sessions on this problem in the last 4 weeks. Untick any that are about something else." }),
-      f.sessHost, f.sessCount);
+    f.sessIntro = el("p", { class: "hint" });
+    f.sessWrap = el("div", { class: "rp-sub", hidden: true }, f.sessIntro, f.sessHost, f.sessCount);
     track("week", el("input", { type: "date" }));
     track("span", select(SPAN, "unsure"));
     track("n", el("input", { type: "number", min: "0", max: "9999", inputmode: "numeric" }));
@@ -533,14 +539,14 @@
     f.setupFrom = el("p", { class: "hint" });
     f.setupLines = el("ul", { class: "rp-lines" });
     f.setupMore = el("details", { class: "rp-more" },
-      el("summary", { text: "Change setup or add phone details" }),
+      el("summary", { text: "Different for this problem? Change it or add phone details" }),
       el("div", { class: "grid2" },
         field("Server", f.server, "As shown on the app's login screen."),
         f.serverOtherWrap,
         field("Wearable or health app linked (optional)", f.wearable),
         field("Phone model (optional)", f.device),
-        field("Phone OS version (optional)", f.osVersion, "In the phone's Settings."),
-        field("mindLAMP app version (optional)", f.appVersion, "The dashboard Users tab may show the device model and app version when you hover over Last Active. It sometimes says unknown."),
+        field("Phone OS version (optional)", f.osVersion, "In the phone's Settings, under About."),
+        field("mindLAMP app version (optional)", f.appVersion, "On the dashboard's Users tab, hover over Last Active. It sometimes says unknown."),
         field("Activity involved (optional)", f.activity),
         field("When it happens (optional)", f.when)));
     f.setupMore.addEventListener("input", () => drawSetup(P.calc.study(studyId)));
@@ -552,37 +558,39 @@
       el("p", { class: "hint", text: "Guide steps that fixed these sessions. Untick any that didn't help." }),
       f.stepsList);
     track("fix", el("input", { type: "text", maxlength: String(L.fix) }));
-    f.fixLabel = el("span", { text: "What fixed it, if anything?" });
-    const fixField = el("label", { class: "field" }, f.fixLabel, f.fix, el("span", { class: "hint", text: "Your team's own words. Other teams can see this." }));
+    f.fixLabel = el("span", { text: "Anything that helped? (optional)" });
+    const fixField = el("label", { class: "field" }, f.fixLabel, f.fix, el("span", { class: "hint", text: "Other teams can see this. " + C.PRIVACY_HINT }));
     f.security = el("input", { type: "checkbox" });
 
     f.send = el("button", { class: "btn", type: "submit", text: "Send report to the platform team" });
     f.status = el("p", { class: "hint", role: "status" });
 
-    f.h2 = el("h3", { text: "2. How many, and for how long?", tabindex: "-1" });
-    const form = el("form", { class: "rp-form", novalidate: true },
-      f.draftNote,
-      el("div", { class: "panel" },
-        el("h3", { text: "1. Which problem?" }),
-        el("p", { class: "rp-line" }, "For: ", f.studyName, " ", f.studyChange),
-        f.studyWrap, f.testNote, f.noStudy, f.pickerHost, f.chosen, f.newWrap),
+    f.h2 = el("h3", { text: "2. How many and how long", tabindex: "-1" });
+    /* Sections 2 to 6 show once a problem is picked (drawSessions toggles f.rest). */
+    f.rest = el("div", { class: "rp-rest", hidden: true },
       el("div", { class: "panel" },
         f.h2, f.sessWrap, f.scopeSummary, f.scopeGrid),
       el("div", { class: "panel" },
-        el("h3", { text: "3. How did it affect your study?" }),
-        el("p", { class: "hint", text: "Only your team knows this. The first three are needed." }),
+        el("h3", { text: "3. Impact" }),
         impact,
-        field("In your words (optional)", f.words, "Only your study and the platform team see this.")),
+        field("In your words (optional)", f.words, "Only your study and the platform team see this. " + C.PRIVACY_HINT)),
       el("div", { class: "panel" },
-        el("fieldset", { class: "rp-q" }, el("legend", { text: "4. What do you think caused it?" }), f.attr)),
+        el("fieldset", { class: "rp-q" }, el("legend", { text: "4. Likely cause" }), f.attr)),
       el("div", { class: "panel" },
         el("h3", { text: "5. Setup" }),
         phoneQ, f.setupFrom, f.setupLines, f.setupMore),
       el("div", { class: "panel" },
-        el("h3", { text: "6. What fixed it?" }),
-        f.stepsWrap, fixField,
-        el("label", { class: "rp-check" }, f.security, " This may be a security problem. Only the platform team will see this report.")),
+        el("h3", { text: "6. What helped" }),
+        f.stepsWrap, fixField),
+      el("label", { class: "rp-check" }, f.security, " This may be a security problem. Only the platform team will see this report."),
       el("div", { class: "bar" }, f.send, f.status));
+    const form = el("form", { class: "rp-form", novalidate: true },
+      f.draftNote,
+      el("div", { class: "panel" },
+        el("h3", { text: "1. Problem" }),
+        el("p", { class: "rp-line" }, "Study: ", f.studyName, " ", f.studyChange),
+        f.studyWrap, f.testNote, f.noStudy, f.pickerHost, f.chosen, f.newWrap),
+      f.rest);
     form.addEventListener("submit", e => { e.preventDefault(); send(); });
     form.addEventListener("input", saveDraftSoon);
     form.addEventListener("change", saveDraftSoon);
@@ -598,9 +606,9 @@
     f.sent = el("div", { class: "panel rp-sent", hidden: true },
       f.sentTitle, el("p", { text: "What happens next:" }), f.sentList, el("div", { class: "bar" }, again, home));
 
+    /* The privacy rule sits under each free-text field, where it applies, not in a banner on every visit. */
     sec.replaceChildren(
       pageHead(P.PAGE_COPY.report),
-      el("div", { class: "notice warn", text: C.PRIVACY_NOTICE }),
       f.sent,
       form);
 
@@ -614,11 +622,11 @@
     f.form.hidden = on;
     if (!on) { f.status.textContent = ""; return; }
     const lines = [
-      "The platform team reads new reports before each biweekly dev meeting.",
+      "The platform team reads new reports before each dev meeting (every two weeks).",
       rec && rec.issueId === "new"
-        ? "They will match it to a known problem or add it as a new one."
-        : "Your answers add to how this problem is ranked.",
-      "When the problem's status changes, you'll see it on your Start here page, under \"Since your last visit\"."
+        ? "They'll match it to a known problem or add it as a new one."
+        : "Your answers help decide where this problem ranks.",
+      "When the problem's status changes, you'll see it on your Start here page."
     ];
     if (rec && rec.security) lines.push("Only the platform team can see this report.");
     f.sentList.replaceChildren(...lines.map(t => el("li", { text: t })));
@@ -634,7 +642,9 @@
     const missing = IMPACT.filter(q => q.required && !radios[q.name].get());
     IMPACT.forEach(q => radios[q.name].el.classList.toggle("missing", missing.includes(q)));
     if (missing.length) {
-      f.status.textContent = "Answer: " + missing.map(q => q.legend).join(" ");
+      f.status.textContent = missing.length === 1
+        ? "Answer \"" + missing[0].legend + "\" under Impact."
+        : "Answer the questions marked required under Impact.";
       radios[missing[0].name].focus();
       return;
     }

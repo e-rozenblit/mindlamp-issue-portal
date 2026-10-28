@@ -11,11 +11,11 @@
   ];
   /* The five steps agreed at the 10-26 dev meeting (D19). */
   const FLOW = [
-    ["Report", "Study teams troubleshoot here and send reports on problems that keep coming up. Developers file GitHub issues. Security problems, and anything about a specific participant or study, go privately to the platform team."],
-    ["Triage", "Every two weeks the dev meeting reviews new reports and sessions. Quick, low-risk fixes are just fixed. A problem that matches a known issue gets a work ticket. A new idea gets a short note in the meeting; the person who scopes it writes it up afterwards."],
-    ["Build and test", "Developers build and test the change. Study teams try it at milestones."],
+    ["Report", "Study teams troubleshoot here and report problems that keep coming up. Developers log code problems in GitHub. Security problems, and anything about a specific participant, go privately to the platform team, never here."],
+    ["Dev meeting", "Every two weeks, developers and the platform team review new reports and sessions and decide what to work on. Small, safe fixes are made right away."],
+    ["Build and test", "Developers build and test the change. Study teams may be asked to try it before release."],
     ["Review and ship", "The platform team reviews the change and releases it, with release notes. The guide and docs are updated."],
-    ["Status update", "The issue's status changes here. If you reported it, troubleshot it or marked \"This affects us too\", you see the change on Start here."]
+    ["Status update", "The problem's status changes here. If you reported it, troubleshot it or marked \"This affects us too\", you see the change on Start here."]
   ];
   const STATUS_HELP = P.C.STATUS_HELP || {};
   const RECOG = [
@@ -46,7 +46,7 @@
     const rank = el("div", { class: "panel" },
       el("h3", { text: "How problems are ranked" }),
       el("ul", { class: "clean" },
-        el("li", { text: "Severity comes from what teams report: what a problem stopped, and what it did to data. Until a team reports a problem, it uses a starter rating." }),
+        el("li", { text: "Severity comes from what teams report: what a problem stopped, and what it did to data. Until a team reports it, the platform team's first estimate is used." }),
         el("li", { text: "A problem ranks higher when more teams see it, and when it threatens goals that the reporting studies ranked highly." }),
         el("li", { text: "The dev meeting view shows how each number is worked out, so anyone can question it." })));
 
@@ -56,21 +56,21 @@
         el("div", {},
           el("div", { class: "k", text: "Everyone signed in" }),
           el("ul", { class: "clean" },
-            el("li", { text: "Known problems: what people see, status, what's planned, and any \"Not now\" reason." }),
-            el("li", { text: "Workarounds, and text written under \"What fixed it\" or \"What helped\"." }),
-            el("li", { text: "Counts, like \"seen by 4 teams\". Never which team." }),
-            el("li", { text: "Reasons added to a problem: the goal, the reason and the person's role." }),
+            el("li", { text: "Known problems: symptoms, status, what's planned, and any \"Not now\" reason." }),
+            el("li", { text: "Workarounds, and what teams wrote under \"What helped\"." }),
+            el("li", { text: "Counts, like \"seen by 4 teams\". Never which team, unless that team chose to show its name." }),
+            el("li", { text: "\"This affects us too\" answers: the goal, the reason and the person's role." }),
             el("li", { text: "Goal ranking totals, once at least 3 studies have ranked." }))),
         el("div", {},
           el("div", { class: "k", text: "Your study and the platform team" }),
           el("ul", { class: "clean" },
             el("li", { text: "Your study's sessions and full reports." }),
-            el("li", { text: "Your study's setup, population tags and goal ranking." }),
+            el("li", { text: "Your study's setup, who takes part, and goal ranking." }),
             el("li", { text: "Which study reported what." }))),
         el("div", {},
           el("div", { class: "k", text: "Developers and the platform team" }),
           el("ul", { class: "clean" },
-            el("li", { text: "Proposal details: risks, effects, test plans and owners. The database enforces this." }),
+            el("li", { text: "Plans for fixes: risks, effects, test plans and owners." }),
             el("li", { text: "What was seen in sessions that weren't fixed, without the study or the person." })))),
       el("p", { text: "Other teams see your work as \"a team\". Your study lead can choose to show your study's name instead." }),
       el("p", { class: "hint", text: "Never stored here: participant names, IDs, contact details, dates of birth, locations, or anything else that identifies a person. Those stay in your own study records, under your own IRB. Security problems are never shown to other teams." }));
@@ -112,7 +112,8 @@
     });
 
     /* General feedback. The header's "Feedback on this page" button works from every page. */
-    const part = select(PARTS, "overall", { "aria-label": "Which part" });
+    /* Only parts this person can open (Admin is for admins). */
+    const part = select(PARTS.filter(([id]) => id !== "admin" || (P.S.user && P.S.user.isAdmin)), "overall", { "aria-label": "Which part" });
     const text = el("textarea", { maxlength: "1500" });
     const status = el("span", { class: "hint", role: "status" });
     const send = el("button", { class: "btn", type: "submit", text: "Send feedback" });

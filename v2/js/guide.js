@@ -18,7 +18,10 @@
   const MISSING = "__missing";         // a broken link in the content
   const ANSWER_LABEL = { fixed: "Fixed", not_fixed: "Not fixed", other: OTHER, next: "Next" };
   const OS_LABEL = { ios: "iPhone", android: "Android" };
-  const DEVICE_HINT = "The dashboard Users tab may show the device model and app version when you hover over Last Active. It sometimes says unknown.";
+  const DEVICE_HINT = "On the dashboard's Users tab, hover over Last Active to see the phone model and app version. It sometimes says unknown.";
+  /* Info button (D24: secondary text opens on hover, tap and keyboard). Falls back to a fold before core has it. */
+  const info = (content, label) => (P.ui.info ? P.ui.info(content, label)
+    : P.ui.el("details", { class: "more" }, P.ui.el("summary", { text: label || "More" }), content));
   const DATA_RISK = "This deletes data the phone has not uploaded yet.";
   const CHANGED = [["", "Choose one (optional)"], ["update", "The app or phone updated"], ["staff", "Staff changed something in the dashboard"],
     ["move", "New phone, travel, or a new network"], ["none", "Nothing, or not sure"]];
@@ -28,6 +31,10 @@
   /* Basis labels the guide guarantees, whatever core says. */
   const BASIS_FALLBACK = { platform: ["Platform team practice", "What the mindLAMP platform team does when troubleshooting."] };
   const MAP_PREF = "ip-guide-map-full";
+  /* Safe fixes (stage 3) are shown together (D24). Each fix gets one mark; an unmarked fix counts as "Not now". */
+  const FIX_MARKS = [["fixed", "Tried, it worked"], ["not_fixed", "Tried, didn't work"], ["later", "Not now"]];
+  const FIX_LABEL = { fixed: "Tried, it worked", not_fixed: "Tried, didn't work", later: "Not now" };
+  const WHO_LABEL = { "participant-now": "Participant, now", "participant-later": "Participant, later", "staff-now": "Staff", platform: "Platform team" };
   const UNCONFIRMED_END = "common.unconfirmed";
 
   /* ---------- content access ---------- */
@@ -58,7 +65,7 @@
   /* ---------- run state (sessionStorage; per-browser only) ---------- */
   function blankRun(keep) {
     return { v: 1, uid: (P.S.user && P.S.user.uid) || "", studyId: "", phone: (keep && keep.phone) || "", entryId: "", startedAt: "", path: [], skips: [],
-      cur: "", ended: null, sessionId: "", saveState: "", saveError: "", noteDraft: {}, follow: { draft: {}, sent: {} } };
+      cur: "", ended: null, sessionId: "", saveState: "", saveError: "", noteDraft: {}, fixMarks: {}, follow: { draft: {}, sent: {} } };
   }
   let run = blankRun();
   function loadRun() {
@@ -123,8 +130,60 @@
     return id;
   }
   function fixedByOf(path) {
-    for (let i = path.length - 1; i >= 0; i--) if (path[i].kind === "action" && path[i].answer === "fixed") return path[i].node;
+    for (let i = path.length - 1; i >= 0; i--) {
+      if (path[i].kind !== "action" || path[i].answer !== "fixed") continue;
+      /* On the suggested-fixes screen several can work; the one the path followed is marked chosen. */
+      if (path[i].group) { const c = path.find(q => q.group === path[i].group && q.chosen); if (c) return c.node; }
+      return path[i].node;
+    }
     return null;
+  }
+  function isFixStep(n) { return !!(n && n.kind === "action" && Number(n.stage) === 3); }
+  /* Follow when/skip rules without moving (the chain of fixes is read ahead of the path). */
+  function resolveSkip(t, skipped) {
+    for (let hops = 0; hops < MAX_HOPS; hops++) {
+      if (typeof t !== "string" || !t || t[0] === "@") return t;
+      const n = nodeOf(t);
+      if (!n) return t;
+      if (n.when && n.skip && !P.calc.matchWhen(n.when, ctxFor(run.studyId, run.phone))) { if (skipped) skipped.push(t); t = n.skip; continue; }
+      return t;
+    }
+    return t;
+  }
+  /* The stage-3 fixes for this path: notFixedNext from the first fix while the next step is also a fix.
+     safe: in chain order; risky (last resort or can lose data): kept apart, also in chain order. */
+  function fixChain(startId) {
+    const ids = [], skipped = [], seen = new Set();
+    let t = startId;
+    while (typeof t === "string" && t && t[0] !== "@" && !seen.has(t) && isFixStep(nodeOf(t))) {
+      seen.add(t); ids.push(t);
+      t = resolveSkip(nodeOf(t).notFixedNext, skipped);
+    }
+    const risky = id => { const n = nodeOf(id); return !!(n.lastResort || n.dataRisk); };
+    return { ids: ids, safe: ids.filter(id => !risky(id)), risky: ids.filter(risky), skipped: skipped, after: t };
+  }
+  function submitFixes() {
+    const id = run.cur;
+    if (run.ended || !isFixStep(nodeOf(id))) return;
+    const chain = fixChain(id);
+    const order = chain.safe.concat(chain.risky);
+    const marks = run.fixMarks || {};
+    const chosen = order.find(x => marks[x] === "fixed") || "";
+    const allTried = order.length && order.every(x => marks[x] === "fixed" || marks[x] === "not_fixed");
+    const note = String(run.noteDraft[id] || "").trim().slice(0, P.C.LIMITS.note);
+    chain.skipped.forEach(x => run.skips.push({ at: run.path.length, node: x }));
+    order.forEach((x, i) => {
+      const m = marks[x] || "later";
+      const e = { node: x, kind: "action", answer: m, label: FIX_LABEL[m], note: i === 0 ? note : "", group: id };
+      if (x === chosen) e.chosen = true;
+      run.path.push(e);
+    });
+    delete run.noteDraft[id];
+    run.fixMarks = {};
+    undo = null;
+    run.was = null;
+    advance(chosen ? (nodeOf(chosen).fixedNext || ENGINE_FIXED) : allTried ? chain.after : UNCONFIRMED_END);
+    afterMove();
   }
 
   /* ---------- engine ---------- */
@@ -198,15 +257,21 @@
   let undo = null;
   function goBack(index) {
     if (run.ended) return;
-    const p = run.path[index];
+    let p = run.path[index];
     if (!p || p.kind === "jump") return;
+    /* A fix from the suggested-fixes screen reopens the whole screen, with its marks. */
+    const grp = p.group ? run.path.filter(q => q.group === p.group) : null;
+    if (grp) { index = run.path.findIndex(q => q.group === p.group); p = run.path[index]; }
     undo = { path: run.path.slice(), skips: run.skips.slice(), cur: run.cur, noteDraft: Object.assign({}, run.noteDraft),
-      from: stepCount(run.path.slice(0, index)) + 1, to: stepCount(run.path) + 1 };
+      fixMarks: Object.assign({}, run.fixMarks || {}), from: stepCount(run.path.slice(0, index)) + 1, to: stepCount(run.path) + 1 };
     run.path = run.path.slice(0, index);
     run.skips = run.skips.filter(s => s.at <= index);
-    if (p.note) run.noteDraft[p.node] = p.note;
-    run.cur = p.node;
-    run.was = { node: p.node, answer: p.answer };  /* marks the earlier answer on the reopened step */
+    const back = grp ? p.group : p.node;
+    if (p.note) run.noteDraft[back] = p.note;
+    run.fixMarks = {};
+    if (grp) grp.forEach(q => { run.fixMarks[q.node] = q.answer; });
+    run.cur = back;
+    run.was = grp ? null : { node: p.node, answer: p.answer };  /* marks the earlier answer on the reopened step */
     saveRun();
     drawRun(true);
   }
@@ -217,7 +282,7 @@
   }
   function undoBack() {
     if (!undo || run.ended) return;
-    run.path = undo.path; run.skips = undo.skips; run.cur = undo.cur; run.noteDraft = undo.noteDraft;
+    run.path = undo.path; run.skips = undo.skips; run.cur = undo.cur; run.noteDraft = undo.noteDraft; run.fixMarks = undo.fixMarks || {};
     undo = null;
     run.was = null;
     saveRun();
@@ -250,7 +315,9 @@
       entryId: run.entryId,
       issueId: issueIdOf(run),
       phone: run.phone || "unsure",
-      path: run.path.map(p => ({ node: p.node, kind: p.kind, answer: p.answer, label: p.label, note: p.note || "" })),
+      /* group/chosen: fixes marked together on the suggested-fixes screen, so per-fix results can be counted. */
+      path: run.path.map(p => Object.assign({ node: p.node, kind: p.kind, answer: p.answer, label: p.label, note: p.note || "" },
+        p.group ? { group: p.group } : {}, p.chosen ? { chosen: true } : {})),
       outcome: outcome,
       fixedBy: fixedBy,
       fixedByText: fn ? (fn.text || "") : "",
@@ -327,7 +394,7 @@
     /* 1. Study and phone */
     V.studySel = el("select", { "aria-label": "Study" });
     V.studySel.addEventListener("change", () => { V.studyOpen = false; V.studyChange.setAttribute("aria-expanded", "false"); P.setStudy(V.studySel.value); });
-    V.studyField = P.ui.field("Study", V.studySel, "The session is saved to this study.");
+    V.studyField = P.ui.field("Study", V.studySel);
     /* The study shows as text (audit item 10); the select opens only on "Change study". */
     V.studyName = el("b", {});
     V.studyChange = el("button", { type: "button", class: "mini", "aria-expanded": "false", text: "Change study" });
@@ -337,9 +404,9 @@
       refreshStart();
       if (V.studyOpen) { try { V.studySel.focus(); } catch (e) { /* ignore */ } }
     });
-    V.studyLine = el("p", { class: "g-studyline" }, el("span", { text: "Saving to: " }), V.studyName, " ", V.studyChange);
-    V.noStudy = el("p", { class: "notice", hidden: true, text: "Ask the platform team to add you to a study. You can still read the steps, but sessions won't be saved." });
-    V.notMember = el("p", { class: "notice", hidden: true, text: "You aren't a member of this study, so this run is a test and won't be saved." });
+    V.studyLine = el("p", { class: "g-studyline" }, el("span", { text: "Study: " }), V.studyName, " ", V.studyChange);
+    V.noStudy = el("p", { class: "notice", hidden: true, text: "You aren't in a study yet, so nothing here is saved. Ask the platform team to add you." });
+    V.notMember = el("p", { class: "notice", hidden: true, text: "Practice run: you aren't in this study, so nothing is saved." });
     V.phoneBtns = C.PHONES.map(([id, label]) => {
       const b = el("button", { type: "button", class: "g-phone", "aria-pressed": "false", "data-phone": id, text: label });
       b.addEventListener("click", () => pickPhone(id));
@@ -347,7 +414,7 @@
     });
     V.phoneMsg = el("p", { class: "hint", role: "status" });
     V.start = el("div", { class: "panel g-start" },
-      el("h3", { text: "1. Pick the study and the phone type" }),
+      el("h3", { text: "1. Study and phone" }),
       V.studyLine, V.studyField, V.noStudy, V.notMember,
       el("div", { class: "g-phones-wrap" },
         el("span", { class: "g-label", id: "g-phone-label", text: "Phone type" }),
@@ -357,14 +424,14 @@
     /* 2. Problem picker */
     const oth = otherEntry();
     V.picker = P.ui.cardPicker({
-      label: "What does the person see? Search with their words.",
+      label: "Search",
       placeholder: "For example: no reminders",
       groups: C.ENTRY_GROUPS,
       last: oth ? { id: oth.id, title: oth.title || "Something else", description: oth.description || "" } : null,
       emptyText: "No match. Try other words, or pick \"" + ((oth && oth.title) || "Something else") + "\".",
       onPick: id => pickEntry(id)
     });
-    V.pick = el("div", { class: "panel g-pick" }, el("h3", { text: "2. Pick what the person sees" }), V.picker);
+    V.pick = el("div", { class: "panel g-pick" }, el("h3", { text: "2. The problem" }), V.picker);
 
     /* 3. The run. Run mode (audit item 3): only the status line sits above the step, so the question and its
        answers fit on screen during a call. Earlier answers go below the step. */
@@ -373,9 +440,10 @@
     V.flow = el("details", { class: "g-flow panel" }, V.flowSum, V.map);
     V.summary = el("div", { class: "g-summary" });
     V.trail = el("ol", { class: "g-trail", "aria-labelledby": "g-trail-label" });
-    V.trailHint = el("span", { class: "hint", text: "Tap an answer to go back to that step." });
+    V.trailHint = el("span", { class: "hint", hidden: true });
+    V.trailLabel = el("span", { class: "k", id: "g-trail-label", text: "Your answers so far" });
     V.trailWrap = el("div", { class: "g-trailwrap" },
-      el("div", { class: "g-trailhead" }, el("span", { class: "k", id: "g-trail-label", text: "Your answers so far" }), V.trailHint),
+      el("div", { class: "g-trailhead" }, V.trailLabel, V.trailHint),
       V.trail);
     V.step = el("div", { class: "g-stepwrap" });
     V.steps = el("div", { class: "g-steps" }, V.summary, V.step, V.trailWrap);
@@ -476,6 +544,9 @@
     V.studyChange.hidden = ids.length < 2;
     V.studyField.hidden = !ids.length || (ids.length > 1 ? !V.studyOpen : true);
     V.noStudy.hidden = !!ids.length;
+    /* Developers and the platform team aren't meant to join a study: for them a run is practice. */
+    V.noStudy.textContent = P.calc.canSeeProposals && P.calc.canSeeProposals() ? "Practice run: nothing here is saved."
+      : "You aren't in a study yet, so nothing here is saved. Ask the platform team to add you.";
     V.notMember.hidden = !ids.length || !V.studySel.value || P.calc.inStudy(V.studySel.value);
     V.phoneBtns.forEach(b => b.setAttribute("aria-pressed", String(b.dataset.phone === run.phone)));
     const ctx = ctxFor(P.S.studyId, run.phone);
@@ -542,7 +613,7 @@
     });
     V.trail.replaceChildren(...items);
     V.trailWrap.hidden = !items.length;
-    V.trailHint.hidden = !!run.ended;
+    if (V.trailLabel) V.trailLabel.textContent = run.ended ? "Your answers" : "Your answers so far";
   }
 
   /* "Why" with its basis. Each basis chip explains itself on a tap (not only in a tooltip). The step's
@@ -563,9 +634,10 @@
       });
       return c;
     });
+    /* D24: the why opens on demand; the basis chips stay visible (D21). */
     return el("div", { class: "g-why" },
-      why ? el("p", {}, el("b", { text: "Why: " }), why) : null,
-      chips.length ? el("div", { class: "g-basis" }, el("span", { class: "hint", text: "How we know:" }), chips) : null,
+      chips.length || why ? el("div", { class: "g-basis" }, el("span", { class: "hint", text: chips.length ? "How we know:" : "" }), chips,
+        why ? info(el("p", { text: why }), "Why") : null) : null,
       help);
   }
 
@@ -580,12 +652,12 @@
         el("p", { text: "Tell the platform team which problem you picked. Then press Start over." })));
       return;
     }
+    if (isFixStep(n)) { drawFixes(); return; }
     const osOnly = n.when && n.when.os ? (Array.isArray(n.when.os) ? n.when.os : [n.when.os]) : null;
     const stageName = String(C.STAGES[n.stage] || "").toLowerCase();
     const backIdx = lastAnswerIndex();
     const meta = el("div", { class: "g-meta" },
       backIdx >= 0 ? btn("Back", "btn ghost g-backstep", () => goBack(backIdx)) : null,
-      el("span", { class: "k", text: "Step " + (stepCount(run.path) + 1) }),
       n.stage ? chip("Stage " + n.stage + " of 5" + (stageName ? ": " + stageName : ""), "g-stage") : null,
       osOnly ? chip(osOnly.map(o => OS_LABEL[o] || o).join(" or ") + " only") : null,
       n.lastResort ? chip("Last resort", "sev hi") : null);
@@ -609,7 +681,7 @@
     if (n.kind === "question") {
       answers = el("div", { class: "g-answers", role: "group", "aria-label": "Answers" },
         (n.options || []).map((o, i) => opt(o.label, "btn big g-opt", i)),
-        opt(OTHER_Q, "btn ghost g-opt", "other"));
+        hasOwnOther(n) ? null : opt(OTHER_Q, "btn ghost g-opt", "other"));
     } else if (n.kind === "action") {
       answers = el("fieldset", { class: "g-answers" },
         el("legend", { text: "Did that fix it?" }),
@@ -627,8 +699,7 @@
     let undoRow = null;
     if (undo) {
       const u = btn("Undo", "btn ghost", () => undoBack());
-      const what = undo.to - undo.from > 1 ? "Your answers to steps " + undo.from + " to " + (undo.to - 1) + " were cleared."
-        : "Your answer to step " + undo.from + " was cleared.";
+      const what = undo.to - undo.from > 1 ? "Your later answers were cleared." : "Your last answer was cleared.";
       undoRow = el("div", { class: "g-undo g-row", role: "status" }, el("span", { text: what }), u);
     }
     V.step.replaceChildren(el("div", { class: "panel g-step" + (n.dataRisk ? " risk" : "") },
@@ -642,6 +713,83 @@
       whyBlock(n.why, n.basis),
       noteBox));
   }
+  /* Suggested fixes (D24): every stage-3 fix for this path on one screen, so staff can compare and choose.
+     Data-safe fixes first in chain order; last-resort fixes that can lose data sit apart with their caution. */
+  function drawFixes() {
+    const { el, chip } = P.ui;
+    const C = P.C;
+    const id = run.cur;
+    const chain = fixChain(id);
+    run.fixMarks = run.fixMarks || {};
+    const backIdx = lastAnswerIndex();
+    const meta = el("div", { class: "g-meta" },
+      backIdx >= 0 ? btn("Back", "btn ghost g-backstep", () => goBack(backIdx)) : null,
+      chip("Stage 3 of 5", "g-stage"));
+    const status = el("p", { class: "hint g-fixnext", role: "status" });
+    const update = () => {
+      const order = chain.safe.concat(chain.risky);
+      const m = run.fixMarks;
+      const worked = order.some(x => m[x] === "fixed");
+      const all = order.every(x => m[x] === "fixed" || m[x] === "not_fixed");
+      status.textContent = worked || all ? "" : "Fixes not tried yet count as \"Not now\". This session will end as \"" + outcomeLabel("unconfirmed") + "\".";
+    };
+    const card = x => {
+      const n = nodeOf(x);
+      const osOnly = n.when && n.when.os ? (Array.isArray(n.when.os) ? n.when.os : [n.when.os]) : null;
+      const name = "g-fix-" + String(x).replace(/\W/g, "_");
+      const marks = FIX_MARKS.map(([k, label]) => {
+        const r = el("input", { type: "radio", name: name, value: k });
+        r.checked = run.fixMarks[x] === k;
+        r.addEventListener("change", () => { if (r.checked) { run.fixMarks[x] = k; saveRun(); update(); } });
+        return el("label", { class: "g-mark g-mark-" + k }, r, el("span", { text: label }));
+      });
+      const title = n.short || n.text || "";
+      return el("li", { class: "g-fix" + (n.lastResort || n.dataRisk ? " risk" : ""), "data-node": x },
+        el("div", { class: "g-meta" },
+          n.lastResort ? chip("Last resort", "sev hi") : null,
+          n.who && WHO_LABEL[n.who] ? chip(WHO_LABEL[n.who]) : null,
+          osOnly ? chip(osOnly.map(o => OS_LABEL[o] || o).join(" or ") + " only") : null),
+        el("h4", { text: title }),
+        n.short && n.text && n.text !== n.short ? el("p", { text: n.text }) : null,
+        (n.caution || n.dataRisk) ? el("div", { class: "caution", role: "note" },
+          n.caution ? el("p", { text: n.caution }) : null,
+          n.dataRisk ? el("p", {}, el("b", { text: DATA_RISK })) : null) : null,
+        el("fieldset", { class: "g-marks" }, el("legend", { class: "fm-sr", text: "What happened: " + title }), marks),
+        whyBlock(n.why, n.basis));
+    };
+    const note = el("textarea", { maxlength: String(C.LIMITS.note), rows: "2", "aria-label": "Note on these fixes (optional)" });
+    note.value = run.noteDraft[id] || "";
+    note.addEventListener("input", () => { run.noteDraft[id] = note.value; saveRun(); });
+    const noteBox = el("details", { class: "g-note" }, el("summary", { text: note.value ? "Note added" : "Add a note" }),
+      P.ui.field("Note (optional)", note, C.PRIVACY_HINT));
+    if (note.value) noteBox.open = true;
+    let undoRow = null;
+    if (undo) undoRow = el("div", { class: "g-undo g-row", role: "status" },
+      el("span", { text: undo.to - undo.from > 1 ? "Your later answers were cleared." : "Your last answer was cleared." }), btn("Undo", "btn ghost", () => undoBack()));
+    const anyRisk = chain.risky.some(x => nodeOf(x).dataRisk);
+    V.step.replaceChildren(el("div", { class: "panel g-step g-fixes" },
+      undoRow,
+      meta,
+      el("h3", { tabindex: "-1", "data-focus": "", text: "Suggested fixes" }),
+      el("p", { class: "g-fixsub", text: "Least disruptive first. Mark each one you try." }),
+      chain.safe.length ? el("ol", { class: "g-fixlist" }, chain.safe.map(card)) : null,
+      chain.risky.length ? el("div", { class: "g-lastresort" },
+        el("h4", { class: "g-lr-head", text: anyRisk ? "Last resort: can lose data" : "Last resort" }),
+        el("ol", { class: "g-fixlist" }, chain.risky.map(card))) : null,
+      el("div", { class: "g-row" }, btn("Continue", "btn g-fixgo", () => {
+        /* A stray tap shouldn't end the session with nothing recorded. */
+        if (!chain.ids.some(x => run.fixMarks[x])) { status.textContent = "Mark at least one fix first."; return; }
+        submitFixes();
+      })),
+      status,
+      noteBox));
+    update();
+  }
+  /* A question whose own options already say "not sure" or "none of these" doesn't get a second one (D20 still holds:
+     that option is the step's "other" answer). */
+  function hasOwnOther(n) {
+    return (n.options || []).some(o => /not sure|don.t know|none of these|can.t check|unsure/i.test(String(o.label || "")));
+  }
   function btn(text, cls, fn) {
     const b = P.ui.el("button", { type: "button", class: cls, text: text });
     b.addEventListener("click", fn);
@@ -652,7 +800,7 @@
   /* Honest endings (audit item 4). The session is saved, and sent for triage, the moment the ending shows.
      So every ending opens with one status line that says what happened to it. On "not fixed", the phone
      questions come first, while the participant is still on the call. */
-  function triedSteps() { return run.path.filter(p => p.kind === "action"); }
+  function triedSteps() { return run.path.filter(p => p.kind === "action" && p.answer !== "later"); }
   /* The confirm step that ended in "not confirmed yet": the last answered question that went there. */
   function checkLaterText() {
     for (let i = run.path.length - 1; i >= 0; i--) {
@@ -693,13 +841,19 @@
       if (fn) parts.push(el("p", {}, el("b", { text: "Seemed to help: " }), (fn.short || fn.text) + "."));
       const later = checkLaterText();
       if (later) parts.push(el("div", { class: "g-block g-later" }, el("div", { class: "k", text: "Still to check" }), el("p", { text: later })));
-      if (end.text) parts.push(el("p", { text: end.text }));
+      /* Fixes left for later on the suggested-fixes screen. */
+      const notYet = run.path.filter(p => p.group && p.answer === "later");
+      if (notYet.length) parts.push(el("div", { class: "g-block g-later" }, el("div", { class: "k", text: "Not tried yet" }),
+        el("ul", { class: "clean" }, notYet.map(p => el("li", { text: stepName(nodeOf(p.node), p.node) })))));
+      /* The content line is about a fix that seemed to work. With only untried fixes, say how to record the rest. */
+      if (end.text && (fn || later || !notYet.length)) parts.push(el("p", { text: end.text }));
+      else if (notYet.length) parts.push(el("p", { text: "Once they've tried the rest, start a new session on this problem to record what happened." }));
     }
 
     if (outcome === "not_fixed") {
       if (end.text) parts.push(el("p", { text: end.text }));
       const model = followInput("model", "Phone model (optional)", 80);
-      const os = followInput("osVersion", "Phone OS version (optional)", 40);
+      const os = followInput("osVersion", "Phone OS version (optional)", 40, "In the phone's Settings, under About.");
       const app = followInput("appVersion", "mindLAMP app version (optional)", 40);
       parts.push(el("div", { class: "g-block g-ask" }, el("div", { class: "k", text: "Before you hang up, ask:" }),
         el("div", { class: "grid2" }, model.field, os.field, app.field),
@@ -708,12 +862,11 @@
           device: { model: model.input.value.trim(), osVersion: os.input.value.trim(), appVersion: app.input.value.trim() },
           stopgapsShown: sg.map(s => s.id)
         }), "Phone details saved to the session.")));
-      parts.push(el("div", { class: "g-block" }, el("div", { class: "k", text: "Steps you tried" }),
-        tried.length ? el("ul", { class: "clean" }, tried.map(p => el("li", { text: stepName(nodeOf(p.node), p.node) + ": " + p.label })))
-          : el("p", { class: "hint", text: "No fix steps were tried on this path." })));
+      /* The steps tried are already in "Your answers" and the path map, so they aren't listed a third time. */
       if (sg.length) parts.push(stopgapBlock(sg));
-      if ((end.collect || []).length) parts.push(el("div", { class: "g-block" }, el("div", { class: "k", text: "The platform team may ask for" }),
-        el("ul", { class: "clean" }, end.collect.map(t => el("li", { text: t })))));
+      if ((end.collect || []).length) parts.push(el("div", { class: "g-block g-collect" },
+        el("div", { class: "k" }, "The platform team may ask for ",
+          info(el("ul", { class: "clean" }, end.collect.map(t => el("li", { text: t }))), "What the platform team may ask for"))));
       parts.push(helpedBlock(sg));
     }
 
@@ -722,7 +875,8 @@
       V.issueBox = el("div", { class: "g-block g-issue" });
       fillIssueBox();
       parts.push(V.issueBox);
-      parts.push(el("p", { text: "This session counts toward how common this problem is." }));
+      /* The content's end text usually says this already; say it only when it doesn't. */
+      if (!end.text && run.saveState !== "local") parts.push(el("p", { text: "This session counts toward how common this problem is." }));
       if (sg.length) parts.push(stopgapBlock(sg));
       parts.push(helpedBlock(sg));
     }
@@ -738,7 +892,7 @@
       parts.push(el("div", { class: "g-block g-ask" }, el("div", { class: "k", text: "Before you hang up, ask:" }),
         P.ui.field("In a few words, what is on the screen?", what, C.PRIVACY_HINT),
         P.ui.field("Since when?", since),
-        P.ui.field("What changed just before it started?", changed, "App and phone updates and staff edits have come before many problems."),
+        P.ui.field("What changed just before it started?", changed, "Many problems start right after an app or phone update or a dashboard change."),
         sendRow("details", "Save these details", "Update these details",
           () => ({ newProblem: { what: what.value.trim(), since: since.value.trim(), changed: changed.value } }), "Details saved to the session.")));
       if (sg.length) parts.push(stopgapBlock(sg));
@@ -749,25 +903,82 @@
     drawSaveStatus();
   }
 
+  /* "What helped" (D24): pick one of this problem's existing suggestions, or write your own. A pick is saved
+     as that suggestion's exact text in `helped`, which Known problems and portal_workarounds count by
+     normalized text, so it adds to "used by N teams" (a guide step or stopgap shows "N teams said it helped").
+     One answer per session, because the counts read one `helped` text per session. */
+  function helpSuggestions(sg) {
+    const out = [];
+    const seen = new Set();
+    const add = (key, text, label, meta) => {
+      const k = P.calc.norm(text || "");
+      if (!k || seen.has(k)) return;
+      seen.add(k);
+      out.push({ key: key, text: String(text).trim(), label: String(label || text).trim(), meta: meta || "" });
+    };
+    triedSteps().forEach(p => { const n = nodeOf(p.node); if (n && n.text) add("node:" + p.node, n.text, n.short || n.text, "Tried on this call"); });
+    sg.forEach(s => add("sg:" + s.id, s.text, s.text, ""));
+    const iid = issueIdOf(run);
+    const iss = iid ? P.calc.issue(iid) : null;
+    let w = null;
+    if (iss && P.calc.workarounds) { try { w = P.calc.workarounds(iss); } catch (e) { w = null; } }
+    if (w) {
+      (w.confirmed || []).forEach(x => add("wa:" + P.calc.norm(x.text || ""), x.text, x.text, "Confirmed by the platform team"));
+      (w.guide || []).forEach(x => add(x.nodeId ? "node:" + x.nodeId : "sg:" + x.stopgapId, x.text, x.text, ""));
+      (w.platform || []).forEach(x => add("wa:" + P.calc.norm(x.text || ""), x.text, x.text, ""));
+      (w.team || []).forEach(x => add("wa:" + (x.key || P.calc.norm(x.text || "")), x.text, x.text,
+        "Used by " + (x.teams || 1) + ((x.teams || 1) > 1 ? " teams" : " team")));
+    }
+    return out;
+  }
   function helpedBlock(sg) {
-    const helped = followHelped();
-    return P.ui.el("div", { class: "g-block" }, helped.field,
-      sendRow("helped", "Save what helped", "Update what helped", () => ({ helped: helped.input.value.trim(), stopgapsShown: sg.map(s => s.id) }),
-        "Saved to the session."));
+    const { el } = P.ui;
+    if (run.saveState === "local") return null;  /* a practice run has nothing to add to */
+    const fu = run.follow.draft;
+    const list = helpSuggestions(sg);
+    /* Older runs kept only the typed text. */
+    if (!fu.helpedPick && fu.helped) { fu.helpedOwn = fu.helped; fu.helpedPick = "own"; }
+    const name = "g-helped-" + String(run.startedAt || "run").replace(/\W/g, "");
+    const radios = [];
+    const radio = (key, label, meta) => {
+      const r = el("input", { type: "radio", name: name, value: key });
+      r.checked = fu.helpedPick === key;
+      r.addEventListener("change", () => { if (r.checked) { fu.helpedPick = key; saveRun(); } });
+      radios.push(r);
+      return el("label", { class: "g-pickrow" }, r, el("span", {}, label, meta ? el("span", { class: "hint g-pickmeta", text: " " + meta }) : null));
+    };
+    const own = el("textarea", { maxlength: String(P.C.LIMITS.helped), rows: "2", "aria-label": list.length ? "Something else that helped" : "What helped" });
+    own.value = fu.helpedOwn || "";
+    own.addEventListener("input", () => {
+      fu.helpedOwn = own.value;
+      if (own.value.trim()) { fu.helpedPick = "own"; radios.forEach(r => { r.checked = r.value === "own"; }); }
+      saveRun();
+    });
+    const ownHint = el("p", { class: "hint", text: "Other teams see this. No names, IDs or other details that identify a person." });
+    const box = list.length
+      ? el("fieldset", { class: "g-helped" },
+        el("legend", { text: "What helped, if anything?" }),
+        el("div", { class: "g-picklist" },
+          list.map(x => radio(x.key, x.label, x.meta)),
+          radio("own", "Something else:", ""),
+          el("div", { class: "g-own" }, own, ownHint),
+          radio("none", "Nothing so far", "")))
+      : el("div", { class: "g-helped" }, P.ui.field("What helped, if anything? (optional)", own, ownHint.textContent));
+    const collect = () => {
+      const pick = list.length ? (fu.helpedPick || "") : "own";
+      const hit = list.find(x => x.key === pick);
+      const text = pick === "own" ? own.value.trim() : hit ? hit.text : "";
+      return { helped: text, stopgapsShown: sg.map(s => s.id) };
+    };
+    return el("div", { class: "g-block" }, box,
+      sendRow("helped", "Save what helped", "Update what helped", collect, "Saved to the session."));
   }
 
-  function followInput(key, label, max) {
+  function followInput(key, label, max, hint) {
     const fu = run.follow.draft;
     const input = P.ui.el("input", { type: "text", maxlength: String(max), value: fu[key] || "" });
     input.addEventListener("input", () => { fu[key] = input.value; saveRun(); });
-    return { input: input, field: P.ui.field(label, input) };
-  }
-  function followHelped() {
-    const fu = run.follow.draft;
-    const input = P.ui.el("textarea", { maxlength: String(P.C.LIMITS.helped), rows: "2" });
-    input.value = fu.helped || "";
-    input.addEventListener("input", () => { fu.helped = input.value; saveRun(); });
-    return { input: input, field: P.ui.field("What helped, if anything? (optional)", input, P.C.PRIVACY_HINT + " " + P.C.PUBLIC_HINT) };
+    return { input: input, field: hint ? P.ui.field(label, input, hint) : P.ui.field(label, input) };
   }
   /* One save button per follow-up block. Each adds its answers to the saved session (store.patch). */
   function sendRow(key, label, again, collect, doneText) {
@@ -801,20 +1012,28 @@
     const { el, statusChip } = P.ui;
     const id = issueIdOf(run);
     const iss = id ? P.calc.issue(id) : null;
-    if (!iss) { V.issueBox.replaceChildren(el("p", { class: "hint", text: "This is a known problem. Its status will show here once the issue list loads." })); return; }
+    /* Once the issue list has loaded, an issue this person can't see (or that isn't listed) shows nothing. */
+    if (!iss) { V.issueBox.replaceChildren(P.S.loaded && P.S.loaded.issues ? "" : el("p", { class: "hint", text: "Loading this problem's status..." })); V.issueBox.hidden = !!(P.S.loaded && P.S.loaded.issues); return; }
+    V.issueBox.hidden = false;
     const plan = P.calc.planFor ? P.calc.planFor(iss) : { planned: iss.planned || "", notNow: iss.status === "not-now" ? (iss.notNowReason || iss.statusNote || "") : "" };
     V.issueBox.replaceChildren(...[
       el("div", { class: "k", text: "Known problem" }),
-      el("p", {}, el("b", { text: iss.title || iss.id }), " ", statusChip(iss.status)),
-      plan.notNow ? el("p", { text: (plan.notNowLabel || "Why not now: ") + plan.notNow }) : null,
+      el("p", {}, el("b", { text: iss.title || iss.id }), " ", statusChip(iss.status),
+        P.C.STATUS_HELP && P.C.STATUS_HELP[iss.status] ? el("span", { class: "hint", text: " " + P.C.STATUS_HELP[iss.status] }) : null),
+      /* Only the issue's own "not now" reason. A set-aside idea's reason was written for its proposal and
+         means nothing mid-call (D24's example). */
+      plan.notNow && iss.status === "not-now" ? el("p", { text: "Why not now: " + plan.notNow }) : null,
       iss.status !== "not-now" && iss.statusNote ? el("p", { text: iss.statusNote }) : null,
       plan.planned ? el("p", { text: "What's planned: " + plan.planned }) : null].filter(Boolean));
   }
   /* The status line at the top of every ending. It only claims what happened. */
   function savedText(outcome) {
     const hasIssue = !!issueIdOf(run);
-    if (isDemo()) return "Demo: nothing was sent.";
-    if (isTestStudy(run.studyId)) return "Saved to the test study. It doesn't count toward any issue.";
+    if (isDemo()) return "Demo: nothing was sent." + (realSavedText(outcome, hasIssue) ? " On the real site: " + realSavedText(outcome, hasIssue) : "");
+    if (isTestStudy(run.studyId)) return "Saved to the test study. Test sessions are left out of every count.";
+    return realSavedText(outcome, hasIssue);
+  }
+  function realSavedText(outcome, hasIssue) {
     switch (outcome) {
       case "fixed": return "Saved to " + P.calc.studyName(run.studyId) + ".";
       case "unconfirmed": return "Saved as not confirmed yet. It doesn't count as fixed.";
@@ -833,10 +1052,11 @@
     if (st === "saved") kids.push(el("p", { class: "g-ok", text: savedText(run.ended.outcome) }));
     else if (st === "saving" || st === "") kids.push(el("p", { class: "hint", text: "Saving the session..." }));
     else if (st === "local") kids.push(el("p", { class: "notice", text: run.studyId || P.calc.myStudies().length
-      ? "Not saved: you aren't a member of this study, so this run was a test. Nothing was sent."
-      : "Not saved: you aren't in a study yet. Nothing was sent. Ask the platform team to add you to a study." }));
+      ? "Practice run: nothing was saved. You aren't a member of this study."
+      : (P.calc.canSeeProposals && P.calc.canSeeProposals() ? "Practice run: nothing was saved."
+        : "Not saved: you aren't in a study yet. Ask the platform team to add you.") }));
     else if (st === "failed") {
-      kids.push(el("p", { class: "notice warn", text: "Not sent yet. Couldn't save the session. " + (run.saveError || "") }));
+      kids.push(el("p", { class: "notice warn", text: "Couldn't save the session. " + (run.saveError || "") }));
       kids.push(btn("Try saving again", "btn", () => saveSession()));
     }
     V.saveLine.replaceChildren(...kids);
@@ -933,7 +1153,7 @@
     if (o.ended) {
       const outcome = o.ended.outcome;
       items.push(el("li", { class: "fm-item fm-end fm-current", "aria-current": "step" },
-        el("span", { class: "fm-label", text: "End: " + (outcome === "not_fixed" && !path.some(p => p.kind === "action") ? "Needs the platform team"
+        el("span", { class: "fm-label", text: "End: " + (outcome === "not_fixed" && !path.some(p => p.kind === "action" && p.answer !== "later") ? "Needs the platform team"
           : ((C.OUTCOMES && C.OUTCOMES[outcome]) || OUTCOME_FALLBACK[outcome] || outcome)) })));
     } else if (cur) {
       const n = node(cur);
@@ -991,8 +1211,9 @@
     });
     host.replaceChildren(...[
       el("div", { class: "fm-head" },
-        el("div", { class: "fm-headrow" }, el("span", { class: "k", text: full ? "The full map" : "The path taken" }), toggle),
-        el("span", { class: "hint", text: "Numbers are the stages: 1 pin down, 2 common causes, 3 safe fixes, 4 confirm, 5 escalate." })),
+        el("div", { class: "fm-headrow" }, el("span", { class: "k" }, full ? "The full map" : "The path taken", " ",
+          info(el("p", { text: "Numbers are the stages: " + [1, 2, 3, 4, 5].map(i => i + " " + String((C.STAGES && C.STAGES[i]) || "").toLowerCase()).join(", ") + "." }),
+            "What the numbers mean")), toggle)),
       el("ol", { class: "fm" }, items),
       all ? el("div", { class: "fm-allhead" }, el("span", { class: "k", text: "Every step for this problem" })) : null,
       all].filter(Boolean));

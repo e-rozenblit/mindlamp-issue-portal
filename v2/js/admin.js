@@ -19,6 +19,16 @@
     return String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40).replace(/-+$/, "");
   }
   function isHttp(u) { return /^https?:\/\/\S+$/i.test(String(u || "").trim()); }
+  /* A report's answers to one question as a list (D24: impact answers may be arrays). */
+  function answersOf(rep, key) {
+    if (typeof calc.answers === "function") return calc.answers(rep, key);
+    const v = rep ? rep[key] : null;
+    return Array.isArray(v) ? v.filter(Boolean) : (v === null || v === undefined || v === "" ? [] : [v]);
+  }
+  /* The most severe answer on a points scale, for the new issue's single starter rating. */
+  function topAnswer(rep, key, pts) {
+    return answersOf(rep, key).filter(a => Object.prototype.hasOwnProperty.call(pts, a)).sort((a, b) => pts[b] - pts[a])[0] || "";
+  }
   function nowStamp() { return { at: new Date().toISOString(), by: S.user.uid }; }
   function entryTitle(entryId) {
     const e = (P.guide().entries || []).find(x => x.id === entryId);
@@ -144,7 +154,7 @@
     function askDelete() {
       const c = studyCounts(s.id);
       if (c.sessions || c.reports) {
-        status.textContent = "This study has sessions or reports, so it can't be deleted.";
+        status.textContent = "This study has sessions or reports, so it can't be deleted. To leave it out of every count, mark it as a test study.";
         return;
       }
       row.dataset.busy = "1";
@@ -301,7 +311,7 @@
   function itemTitle(it) {
     const r = it.rec;
     if (it.kind === "report") return "Report: something new";
-    if (r.outcome === "new_problem") return "Session: something else";
+    if (r.outcome === "new_problem") return "Session: new problem";
     if (r.outcome === "not_fixed") return "Session: still not fixed";
     return "Session with no issue";
   }
@@ -312,6 +322,13 @@
     const facts = (label, value) => value ? el("p", {}, el("b", { text: label + ": " }), value) : null;
     out.push(el("p", { class: "hint", text: studyLabel(r.studyId) + ". " + ui.fmtDate(r.created) + " (" + ui.ago(r.created) + ")." +
       (r.phone ? " Phone: " + ((C.PHONES.find(p => p[0] === r.phone) || [0, r.phone])[1]) + "." : "") }));
+    /* Who to ask for more detail (the troubleshooting ending says the platform team may ask). */
+    if (r.author) {
+      const acct = (st.people || []).find(p => p.id === r.author);
+      const who = acct ? [acct.name, acct.email].filter(Boolean).join(", ") : calc.personName(r.author);
+      out.push(facts(it.kind === "session" ? "Run by" : "Sent by",
+        who + (r.role && C.ROLE_NAME && C.ROLE_NAME[r.role] ? " (" + C.ROLE_NAME[r.role] + ")" : "")));
+    }
     if (it.kind === "session") {
       out.push(facts("Problem picked", entryTitle(r.entryId)));
       if (r.issueId) out.push(facts("Issue", calc.issueTitle(r.issueId)));
@@ -334,10 +351,10 @@
       out.push(facts("What people see", r.newSymptom));
       out.push(facts("In their words", r.words));
       out.push(facts("Participants affected", r.n ? String(r.n) : ""));
-      out.push(el("div", { class: "bar" }, r.stops ? ui.chip(C.STOPS[r.stops] || r.stops) : null,
-        r.data ? ui.chip(C.DATA[r.data] || r.data) : null, r.cost ? ui.chip(C.COST[r.cost] || r.cost) : null,
+      const lab = (k, names) => answersOf(r, k).map(a => ui.chip(((C.IMPACT_LABEL || {})[k] || {})[a] || names[a] || a));
+      out.push(el("div", { class: "bar" }, lab("stops", C.STOPS), lab("data", C.DATA), lab("cost", C.COST),
         r.security ? ui.chip("Possible security problem", "sev hi") : null));
-      out.push(facts("What fixed it", r.fix));
+      out.push(facts("What helped", r.fix));
     }
     return out.filter(Boolean);
   }
@@ -373,7 +390,7 @@
       put(actHost, el("div", { class: "list" }, pickHost, chosenOut,
         el("div", { class: "bar" }, confirmBtn, el("button", { type: "button", class: "btn ghost", text: "Cancel", onclick: closeForm }))));
       if (typeof P.issuePicker === "function") {
-        P.issuePicker(pickHost, { studyId: r.studyId, showFixed: true, onPick(id) {
+        P.issuePicker(pickHost, { studyId: r.studyId, showFixed: true, label: "Which issue is this?", onPick(id) {
           if (id === "new") { openNew(); return; }
           chosen = id; confirmBtn.disabled = false;
           chosenOut.textContent = "Link to: " + calc.issueTitle(id);
@@ -393,9 +410,9 @@
       symptom.value = r.newSymptom || np.what || "";
       const area = ui.select(Object.entries(C.AREAS), "app", { "aria-label": "Area" });
       const type = ui.select(TYPES, "bug", { "aria-label": "Type" });
-      const stops = ui.select(Object.entries(C.STOPS), r.stops || "none");
-      const data = ui.select(Object.entries(C.DATA), r.data || "unknown");
-      const cost = ui.select(Object.entries(C.COST), r.cost || "staff");
+      const stops = ui.select(Object.entries(C.STOPS), topAnswer(r, "stops", C.STOP_PTS) || "none");
+      const data = ui.select(Object.entries(C.DATA), topAnswer(r, "data", C.DATA_PTS) || "unknown");
+      const cost = ui.select(Object.entries(C.COST), answersOf(r, "cost").find(a => Object.prototype.hasOwnProperty.call(C.COST, a)) || "staff");
       const sec = el("input", { type: "checkbox", checked: !!r.security });
       const m = statusLine();
       put(actHost, el("div", { class: "list" },
@@ -404,7 +421,7 @@
         ui.field("Title", title, "Plain words, as an RA would say it."),
         ui.field("What people see", symptom),
         el("div", { class: "grid2" }, ui.field("Area", area), ui.field("Type", type), ui.field("What it stops", stops),
-          ui.field("What it does to the data", data), ui.field("Who absorbs the cost", cost)),
+          ui.field("What it does to the data", data), ui.field("Who has to deal with it", cost)),
         el("label", { class: "opts" }, el("span", { style: "display:flex;gap:6px;align-items:center" }, sec,
           "Security problem. Only admins will see this issue.")),
         el("div", { class: "bar" },
@@ -478,9 +495,9 @@
       el("p", { class: "k", text: issue.title }),
       el("p", { text: w.text }),
       el("p", { class: "hint", text: "Used by " + plural(w.teams, "team") +
-        " (" + plural(w.reports || 0, "report") + ", " + plural(w.sessions || 0, "session") + "). Other teams see it as from " + creditFor(w) +
-        (creditFor(w) === "a team" ? " (no study chose to show its name)." : " (that study shows its name).") +
-        ((w.credited || []).length ? " From: " + w.credited.join(", ") + "." : "") }),
+        " (" + plural(w.reports || 0, "report") + ", " + plural(w.sessions || 0, "session") + ")." +
+        ((w.credited || []).length ? " From: " + w.credited.join(", ") + "." : "") +
+        " Other teams see it as from \"" + creditFor(w) + "\"." }),
       ui.field("Caution (when it has a cost)", caution, "For example: \"This deletes data not yet uploaded.\" Every team sees it."),
       el("div", { class: "bar" },
         el("button", { type: "button", class: "btn", text: "Confirm workaround", onclick: () => {
@@ -507,7 +524,7 @@
       el("p", { class: "hint", text: "The Dev meeting page shows these to everyone who opens it. Only developers, the platform team and admins see the report link." }),
       el("div", { class: "grid2" },
         ui.field("Date of the last meeting", date, "New items on the Dev meeting page start from this date."),
-        ui.field("Link to the latest pre-meeting report", url, "This week's file is reports/" + lastMonday() + "-monday-report.md. That folder isn't on the site, so paste a link to where the report is shared.")),
+        ui.field("Link to the latest pre-meeting report", url, "Paste a link to where this week's report is shared (its file is reports/" + lastMonday() + "-monday-report.md).")),
       el("div", { class: "bar" }, el("button", { type: "submit", class: "btn", text: "Save meeting details" }), msg));
     let typed = false;
     form.addEventListener("input", () => { typed = true; });
@@ -573,7 +590,7 @@
 
       el("div", { class: "panel" },
         el("h3", { text: "1. Studies" }),
-        el("p", { class: "hint", text: "Studies are made here, not copied from Notion. A study's lead fills in its setup on the Your study page." })),
+        el("p", { class: "hint", text: "A study's lead fills in its setup on the Your study page." })),
       createStudyForm(),
       studies,
 
@@ -589,7 +606,7 @@
 
       el("div", { class: "panel" },
         el("h3", { text: "3. Sort new problems" }),
-        el("p", { class: "hint", text: "Sessions that ended \"Still not fixed\" or \"Something else\", and reports of something new. Link each to an issue, make a new issue, or dismiss it." }),
+        el("p", { class: "hint", text: "Sessions that ended \"Still not fixed\" or \"New problem\", and reports of something new. Link each to an issue, make a new issue, or dismiss it. The team sees what you did on its Start here page." }),
         el("label", { class: "opts" }, el("span", { style: "display:flex;gap:6px;align-items:center" }, unlinked,
           "Also show finished sessions that have no issue")),
         triageCount),
@@ -597,7 +614,7 @@
 
       el("div", { class: "panel" },
         el("h3", { text: "4. Confirm workarounds" }),
-        el("p", { class: "hint", text: "What teams wrote under \"What fixed it\" and \"What helped\". Confirm the ones that are safe. Add a caution when a workaround has a cost. Hide entries that aren't workarounds." })),
+        el("p", { class: "hint", text: "What teams wrote under \"What helped\". Other teams already see these, marked \"Not confirmed yet\". Confirm the safe ones, add a caution when one has a cost, and hide anything that isn't a workaround." })),
       workarounds,
       meeting,
       orphanPanel);

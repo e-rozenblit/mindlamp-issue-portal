@@ -8,6 +8,9 @@
 
   /* ---------- small helpers ---------- */
   function ui() { return P.ui; }
+  /* Shared helpers from core, with fallbacks until core has them (D24). */
+  const info = (content, label) => (P.ui.info ? P.ui.info(content, label) : P.ui.el("details", { class: "more" }, P.ui.el("summary", { text: label || "More" }), content));
+  const nameOf = i => (P.ui.issueName ? P.ui.issueName(i) : { title: i.short || i.title || i.id, subtitle: i.short ? (i.title || "") : "" });
   function words(q) { return String(q || "").trim().toLowerCase().split(/\s+/).filter(Boolean); }
   function clip(t, n) { t = String(t || ""); return t.length > n ? t.slice(0, n - 1).trimEnd() + "..." : t; }
   function safeUrl(u) { return /^https?:\/\//i.test(String(u || "").trim()) ? String(u).trim() : ""; }
@@ -20,12 +23,14 @@
 
   /* Words to search an issue by: its own words plus the guide entries that lead to it. */
   function searchText(issue) {
-    const parts = [issue.title, issue.symptom, (issue.phrases || []).join(" ")];
+    const parts = [issue.short || "", issue.title, issue.symptom, (issue.phrases || []).join(" ")];
     P.calc.entryFor(issue.id).forEach(e => parts.push(e.title || "", e.description || "", (e.phrases || []).join(" ")));
     return parts.join(" ").toLowerCase();
   }
   function searchPhrases(issue) {
     const out = (issue.phrases || []).slice();
+    if (issue.short && issue.title) out.push(issue.title);
+    if (issue.symptom) out.push(issue.symptom);
     P.calc.entryFor(issue.id).forEach(e => { out.push(e.title || ""); (e.phrases || []).forEach(p => out.push(p)); });
     return out.filter(Boolean);
   }
@@ -84,18 +89,21 @@
       label: opts.label || "What are you seeing?",
       placeholder: opts.placeholder || "Type what you see, for example: logged out",
       last: { id: "new", title: "Something new", description: "It isn't listed here. You'll describe it in a few words." },
-      emptyText: "No known issue matches. Try other words, or pick \"Something new\".",
-      groups: { mine: "Your study has sessions on these", rest: "Other issues" },
-      collapse: { keep: "mine", max: 5, label: "Browse all known problems" },
+      emptyText: "No known problem matches. Try other words, or pick \"Something new\".",
+      /* D24: the full list comes before "Something new" (no collapse), so people browse every known problem first. */
+      groups: { mine: "Your team troubleshot these this month", rest: "Other known problems" },
       onPick: id => { selected = id; if (opts.onPick) opts.onPick(id); }
     });
     const wrap = P.ui.el("div", { class: "issue-picker" },
       picker,
       P.ui.el("label", { class: "hint ip-fixed" }, toggle, " Show fixed issues"));
+    /* A search covers every known problem, fixed ones included, so a fixed problem isn't reported as new. */
+    const searchBox = picker.querySelector("input[type=search]");
     function items() {
       const sid = getStudy();
+      const searching = !!(searchBox && searchBox.value.trim());
       const rows = visibleIssues()
-        .filter(i => toggle.checked || !P.calc.isFixed(i) || i.id === selected)
+        .filter(i => toggle.checked || searching || !P.calc.isFixed(i) || i.id === selected)
         .map(i => {
           const mine = sid ? studySessions(sid, i.id, 30).length : 0;
           return { i: i, mine: mine, signal: P.calc.stats(i).signal };
@@ -106,8 +114,8 @@
         anyMine: anyMine,
         list: rows.map(r => ({
           id: r.i.id,
-          title: r.i.title || r.i.id,
-          description: clip(r.i.symptom, 160),
+          title: nameOf(r.i).title,
+          description: clip(nameOf(r.i).subtitle || r.i.symptom, 160),
           phrases: searchPhrases(r.i),
           badge: r.mine ? plural(r.mine, "session") + " this month" : (P.calc.isFixed(r.i) ? "Fixed" : ""),
           group: anyMine ? (r.mine ? "mine" : "rest") : ""
@@ -121,6 +129,7 @@
       if (selected) picker.setSelected(selected);
     }
     toggle.addEventListener("change", refresh);
+    if (searchBox) searchBox.addEventListener("input", () => { if (!toggle.checked) refresh(); });
     refresh();
     host.replaceChildren(wrap);
     return {
@@ -147,9 +156,9 @@
 
   /* What each status means, shown next to the status (approved 10-27). One copy in core: C.STATUS_HELP. */
   function statusHelp(status) { return (P.C.STATUS_HELP || {})[status] || ""; }
-  function statusChipWithHelp(status) {
+  function statusChip(status, help) {
     const ch = P.ui.statusChip(status);
-    const h = statusHelp(status);
+    const h = help === undefined ? statusHelp(status) : help;
     if (h) ch.title = h;
     return ch;
   }
@@ -208,10 +217,12 @@
     const out = { planned: [], notNow: [], ideaNotNow: [] };
     const addU = (arr, t) => { t = String(t || "").trim(); if (t && !arr.some(x => P.calc.norm(x) === P.calc.norm(t))) arr.push(t); };
     if (i.planned) addU(out.planned, i.planned);
+    const ownPlan = !!i.planned;
     if (i.status === "not-now") addU(out.notNow, i.notNowReason || i.statusNote);
     const settled = i.status === "fixed" || i.status === "in-progress";
     (P.S.agg.plans || []).filter(p => p && p.issueId === i.id).forEach(p => {
-      addU(out.planned, p.planned);
+      /* One plan line per problem: its own, else the newest proposal line (never two wordings of one plan). */
+      if (!ownPlan && !out.planned.length) addU(out.planned, p.planned);
       /* A set-aside idea stops showing once the issue is being fixed or is fixed (same rule as calc.planFor). */
       if (settled) return;
       /* A proposal's Not now reason on an issue that is itself Not now explains the status; otherwise one idea was set aside. */
@@ -234,11 +245,6 @@
     ctl.q.addEventListener("input", refreshList);
     sec.replaceChildren(
       pageHead(P.PAGE_COPY.issues),
-      el("div", { class: "notice ib-ways" },
-        el("p", { text: "Two ways to tell the platform team a problem matters to your study:" }),
-        el("ul", { class: "clean" },
-          el("li", {}, el("b", { text: "This affects us too: " }), "one tap, with a reason if you like."),
-          el("li", {}, el("b", { text: "A report: " }), "a detailed account. How many participants, what it stopped, what fixed it."))),
       el("div", { class: "bar ib-filters" },
         el("label", { class: "ib-q" }, ctl.q),
         el("label", {}, "Area", ctl.area),
@@ -317,14 +323,15 @@
     const wa = hasWorkaround(workaroundsData(i));
     const mine = mySessions30(i.id);
     const st = P.C.STATUS[i.status] || i.status || "";
-    c.sum.setAttribute("aria-label", [i.title || i.id, st ? "Status: " + st : "", wa ? "Workaround available" : "No workaround yet",
-      s.teams ? "Reported by " + plural(s.teams, "team") : "No team reports yet", mine ? "Your study: " + plural(mine, "session") + " this month" : ""].filter(Boolean).join(". ") + ".");
+    c.sum.setAttribute("aria-label", [nameOf(i).title, nameOf(i).subtitle, st ? "Status: " + st : "", wa ? "Workaround available" : "No workaround yet",
+      s.teams ? "Seen by " + plural(s.teams, "team") : "No team has logged it yet", mine ? "Your study: " + plural(mine, "session") + " this month" : ""].filter(Boolean).join(". ") + ".");
     c.sum.replaceChildren(
-      el("h3", { text: i.title || i.id }),
-      s.teams ? el("div", { class: "side", title: "Teams that reported it, including platform team records" }, el("b", { text: String(s.teams) }), s.teams === 1 ? "team" : "teams")
-        : el("div", { class: "side", text: "No team reports yet" }),
+      el("div", { class: "ib-name" }, el("h3", { text: nameOf(i).title }),
+        nameOf(i).subtitle ? el("p", { class: "ib-sub", text: nameOf(i).subtitle }) : null),
+      s.teams ? el("div", { class: "side" }, "Seen by ", el("b", { text: String(s.teams) }), s.teams === 1 ? " team" : " teams")
+        : el("div", { class: "side", text: "No team has logged it yet" }),
       el("div", { class: "meta" },
-        statusChipWithHelp(i.status),
+        statusChip(i.status, i.status === "workaround" && !wa ? "" : undefined),
         i.status === "workaround" ? null : wa ? chip("Workaround available", "stamp") : chip("No workaround yet", "unconfirmed"),
         i.confirmed ? chip("Confirmed by the platform team", "stamp") : null,
         i.security ? chip("Security: admins only", "sev hi") : null,
@@ -342,12 +349,12 @@
       const w = P.calc.sevWords(i, s);
       return section("How much it gets in the way",
         el("p", { text: w.words || "Teams rated its impact." }),
-        el("p", { class: "hint", text: w.source + " The Dev meeting page shows the score and how it is worked out." }));
+        el("p", { class: "hint", text: w.source + (P.calc.canSeeProposals() ? " The Dev meeting page shows the score and how it is worked out." : "") }));
     }
     const chips = starterChips(i);
     return section("How much it gets in the way",
-      chips.length ? el("div", { class: "meta" }, chips) : el("p", { text: "No effect rated yet." }),
-      el("p", { class: "hint", text: "Starter estimate from the platform team. No team reports yet. Teams' reports replace it." }));
+      chips.length ? el("div", { class: "meta" }, chips) : el("p", { text: "Not rated yet." }),
+      chips.length ? el("p", { class: "hint", text: "First estimate by the platform team. Teams' reports replace it." }) : null);
   }
 
   function fillInfo(c, i) {
@@ -357,34 +364,38 @@
     const out = [];
     if (i.security && isAdmin) out.push(el("div", { class: "caution", text: "Security issue. Only admins see it. Keep it out of public places." }));
 
-    /* 1. What helps: first, because it pays off even when nothing gets fixed (D1, D2). */
-    out.push(workaroundsBlock(i));
+    /* 1. What people see, then what helps (D24: the problem has to be recognizable before its workaround makes sense). */
+    if (i.symptom) out.push(section("What people see", el("p", { text: i.symptom })));
+    const wd = workaroundsData(i);
+    out.push(workaroundsBlock(i, wd));
 
-    /* 2. Status, its meaning, and the public plan lines */
-    const help = statusHelp(i.status);
+    /* 2. Status and the public plan lines. A status never claims what the page doesn't show (D24):
+       "Workaround known" with nothing written up here says so, and how to get it. */
     const plans = planLines(i);
+    /* With its reason printed right below, "Not now" needs no note that a reason always comes with it. */
+    const help = i.status === "workaround" && !hasWorkaround(wd) ? ""
+      : i.status === "not-now" && plans.notNow.length ? "Not planned for now."
+      : statusHelp(i.status);
     /* Working spec links are for developers and the platform team until the platform team decides (SPEC 10, item 24). */
     const spec = P.calc.canSeeProposals() ? safeUrl(i.specUrl) : "";
     out.push(section("Status",
-      el("div", { class: "ladder" }, statusChipWithHelp(i.status), help ? " " + help : "",
+      el("div", { class: "ladder" }, statusChip(i.status, help), help ? " " + help : "",
         i.confirmed ? [" ", chip("Confirmed by the platform team", "stamp")] : null),
       plans.notNow.map(t => el("p", {}, el("b", { text: "Why not now: " }), t)),
-      plans.ideaNotNow.map(t => el("p", {}, el("b", { text: "One idea for this was set aside: " }), t)),
+      plans.ideaNotNow.map(t => el("p", {}, el("b", { text: "A proposed fix is on hold: " }), t)),
       i.status !== "not-now" && i.statusNote ? el("p", { text: i.statusNote }) : null,
       plans.planned.map(t => el("p", {}, el("b", { text: "What's planned: " }), t)),
-      i.provisional ? el("p", { class: "hint", text: "Details may change as the platform team checks them." }) : null,
       spec ? el("p", {}, el("a", { href: spec, target: "_blank", rel: "noopener", text: "Open the working spec" })) : null));
 
-    /* 3. What people see, how much it gets in the way, how common, how we know */
-    if (i.symptom) out.push(section("What people see", el("p", { text: i.symptom })));
+    /* 3. How much it gets in the way, how common, how we know */
     out.push(impactSection(i, s));
-    const mine30 = mySessions30(i.id);
+    /* Your study's count is on the row above, and each "affects us too" is listed below, so neither repeats here. */
+    const listed = P.calc.boostsFor(i.id).length;
     const lines = [
-      s.teams ? "Reported by " + plural(s.teams, "team") + "." : "No team reports yet.",
+      s.teams ? "Seen by " + plural(s.teams, "team") + "." : "No team has logged it yet.",
       s.sessions ? plural(s.sessions30 || 0, "troubleshooting session") + " in the last 30 days, " + s.sessions + " in all." : "No troubleshooting sessions logged yet.",
       s.reports ? plural(s.recent || 0, "report") + " in the last 30 days, " + s.reports + " in all." : null,
-      s.boosts ? plural(s.boosts, "person", "people") + " said it affects them too." : null,
-      mine30 ? "Your study: " + plural(mine30, "session") + " in the last 30 days." : null,
+      s.boosts && !listed ? plural(s.boosts, "person", "people") + " said it affects them too." : null,
       s.last ? "Last activity: " + fmtDate(s.last) + "." : null
     ].filter(Boolean);
     out.push(section("How common it is", el("ul", { class: "clean" }, lines.map(t => el("li", { text: t })))));
@@ -395,9 +406,9 @@
     /* 4. Why others said it affects them too */
     const bs = P.calc.boostsFor(i.id);
     if (bs.length) {
-      out.push(section("Why others said it affects them too", el("div", { class: "boosts" }, bs.map(b => el("div", { class: "boost" },
+      out.push(section("Why it matters to other teams", el("div", { class: "boosts" }, bs.map(b => el("div", { class: "boost" },
         el("b", { text: (ROLE_WHO[b.role] || "Someone") + (b.studyName ? " at " + b.studyName : "") + (b.mine ? " (you)" : "") }),
-        b.goal ? ": threatens " + b.goal + "." : ".",
+        b.goal ? ". At risk: " + String(b.goal).charAt(0).toLowerCase() + String(b.goal).slice(1) + "." : ".",
         b.why ? " " + b.why : "")))));
     }
 
@@ -416,10 +427,10 @@
     c.info.replaceChildren(...out);
   }
 
-  function workaroundsBlock(i) {
+  function workaroundsBlock(i, wd) {
     const { el, chip, toast } = P.ui;
     const isAdmin = P.S.user.isAdmin;
-    const w = workaroundsData(i);
+    const w = wd || workaroundsData(i);
     const items = [];
 
     w.confirmed.forEach(x => {
@@ -444,31 +455,36 @@
 
     const entry = P.calc.entryFor(i.id)[0];
     w.guide.forEach(x => {
-      const open = entry ? el("button", { class: "mini", type: "button", text: "Open the guide" }) : null;
+      const open = entry ? el("button", { class: "mini", type: "button", text: "Open in Troubleshoot" }) : null;
       if (open) open.addEventListener("click", () => P.go("guide", { entryId: entry.id }));
       items.push(el("li", { class: "wa" },
-        el("div", {}, x.text, " ", chip("Step in the guide", "stamp")),
-        el("div", { class: "credit", text: "This is a step in the troubleshooting guide." + (x.teams ? " " + plural(x.teams, "team") + " said it helped." : "") }),
+        el("div", {}, x.text, " ", chip("Troubleshooting step", "stamp")),
+        x.teams ? el("div", { class: "credit", text: plural(x.teams, "team") + " said it helped." }) : null,
         open ? el("div", { class: "bar" }, open) : null));
     });
 
     w.platform.forEach(x => {
-      items.push(el("li", { class: "wa" }, el("div", { text: x.text }), el("div", { class: "credit", text: "From platform team records." })));
+      items.push(el("li", { class: "wa" }, el("div", { text: x.text }), el("div", { class: "credit", text: "From the platform team." })));
     });
 
     w.team.forEach(x => {
-      const from = (x.credited && x.credited.length) ? x.credited.join(", ") + ((x.teams || 0) > x.credited.length ? " and other teams" : "") : "a team";
+      const n = x.teams || 1, named = (x.credited || []).length;
+      const credit = named
+        ? "From " + x.credited.join(", ") + (n > named ? " and " + plural(n - named, "other team") : "") + "."
+        : "Used by " + plural(n, "team") + ".";
       const li = el("li", { class: "wa" },
         el("div", {}, x.text, " ", chip("Not confirmed yet", "unconfirmed")),
-        el("div", { class: "credit", text: "From " + from + ". Used by " + plural(x.teams || 1, "team") + "." }));
+        el("div", { class: "credit", text: credit }));
       if (isAdmin) li.append(adminConfirm(i, x));
       items.push(li);
     });
 
-    const kids = [el("p", { class: "hint", text: "What teams found. Use it if it fits your study." })];
+    const kids = [items.length ? el("p", { class: "hint", text: "Check that each one fits your study before you use it." }) : null];
     if (i.harmful) kids.push(el("div", { class: "caution", text: "Some of these have a cost. Read them before you use them." }));
     kids.push(items.length ? el("ul", { class: "clean walist" }, items)
-      : el("p", { class: "hint", text: "None known yet. If something helped, add it when you report this issue." }));
+      : i.status === "workaround"
+        ? el("p", { text: "The platform team knows a way around this, but it isn't written up here yet. Ask them for it." })
+        : el("p", { class: "hint", text: "None known yet. If something helped, add it when you report this issue." }));
     return section("What helps", ...kids);
   }
 
@@ -512,8 +528,8 @@
     const sid = P.calc.inStudy(P.S.studyId) ? P.S.studyId : "";
     const mine = P.calc.myBoost(i.id, sid);
     if (!c.goal) {
-      c.goal = select([["", "Study goal it threatens (optional)"]].concat(P.C.GOALS.map(g => [g, g])), "", { "aria-label": "Study goal it threatens (optional)" });
-      c.why = el("input", { type: "text", maxlength: "300", placeholder: "Why it matters to your study (optional)", "aria-label": "Why it matters to your study (optional)" });
+      c.goal = select([["", "None picked"]].concat(P.C.GOALS.map(g => [g, g])), "", {});
+      c.why = el("input", { type: "text", maxlength: "300" });
       c.who = el("p", { class: "hint" });
       c.state = el("p", {});
       c.save = el("button", { class: "btn", type: "button" });
@@ -541,14 +557,19 @@
       });
       c.rep.addEventListener("click", () => P.go("report", { issueId: i.id }));
       c.form.replaceChildren(
-        section("Does this affect your study?",
+        el("div", { class: "ib-sec" },
+          el("div", { class: "k ib-k" }, "Does this affect your study? ",
+            info(el("ul", { class: "clean" },
+              el("li", {}, el("b", { text: "This affects us too: " }), "one tap, with a reason if you like."),
+              el("li", {}, el("b", { text: "A report: " }), "a detailed account. How many participants, what it stopped, what fixed it.")),
+              "How is this different from a report?")),
           c.state,
-          el("div", { class: "bar ib-boost" }, c.why, c.goal),
-          el("p", { class: "hint", text: P.C.PRIVACY_HINT + " " + P.C.PUBLIC_HINT }),
+          el("div", { class: "bar ib-boost" }, P.ui.field("Why it matters to your study (optional)", c.why), P.ui.field("Goal at risk (optional)", c.goal)),
+          el("p", { class: "hint", text: P.C.PRIVACY_HINT }),
           el("div", { class: "bar" }, c.save, c.del, c.rep, c.status),
           c.who));
     }
-    c.state.textContent = mine ? "Your study said this affects you too." : "";
+    c.state.textContent = mine ? "You marked this as affecting your study." : "";
     c.state.hidden = !mine;
     /* Pilot hygiene: an admin outside the picked study is trying things out. Like a test troubleshooting
        run, it isn't saved, so it can't change any count. */
@@ -556,7 +577,7 @@
     c.who.textContent = adminTest
       ? "You aren't a member of the study picked at the top, so this would be a test. It isn't saved and doesn't count."
       : sid
-        ? "This counts for " + P.calc.studyName(sid) + ". Other teams see your role, the goal and your reason, never your name."
+        ? "This counts for " + P.calc.studyName(sid) + ". Other teams see your role, the goal and your reason, never your name. Your study's name shows only if your study chose to show it."
         : "You aren't in a study, so this counts as your own, not a study's. Other teams see it in the count, with your role, the goal and your reason, never your name.";
     c.save.textContent = mine ? "Save changes" : "This affects us too";
     c.save.hidden = adminTest && !mine;
