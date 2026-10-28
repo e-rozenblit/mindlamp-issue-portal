@@ -6,7 +6,7 @@
   const P = window.Portal;
 
   const PARTS = [
-    ["overall", "The portal overall"], ["home", "Home"], ["guide", "Troubleshoot"], ["report", "Report a problem"],
+    ["overall", "The portal overall"], ["home", "Home"], ["guide", "Troubleshoot"], ["report", "Study impact"],
     ["issues", "Known problems"], ["study", "Your study"], ["dev", "Dev meeting"], ["admin", "Admin"], ["about", "How this works"]
   ];
   /* The five steps agreed at the 10-26 dev meeting (D19). */

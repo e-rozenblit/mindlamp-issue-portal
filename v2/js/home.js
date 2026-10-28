@@ -44,7 +44,7 @@
       info: "Each run saves itself at the end. It holds no participant details."
     },
     report: {
-      title: "Report a problem",
+      title: "Study impact",
       subtitle: "Tell the platform team how a problem affected your study.",
       info: "Your team's troubleshooting runs fill in most of it. After you send it, status changes show on the Home page."
     },
@@ -144,7 +144,7 @@
     if (role === "rc" || !role) acts = [
       action("Troubleshoot a participant", "Step by step, during the call or right after it.", "act:guide", toGuide()),
       /* Without a study, a report can't be sent, so the second button is the page they can use (matches the subtitle). */
-      role ? action("Report a problem", "Say how a problem affected your study.", "act:report", toReport)
+      role ? action("Report study impact", "Say how a problem affected your study.", "act:report", toReport)
         : action("Check known problems", "Every problem teams have hit, and what helps.", "act:issues", () => P.go("issues", {}))
     ];
     else if (role === "lead") acts = [
