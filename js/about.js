@@ -105,8 +105,8 @@
       const text = RECOG.filter(q => answers[q.id]).map(q => q.q + " " + answers[q.id]).concat(note ? ["Note: " + note] : []).join("\n");
       rStatus.textContent = "Sending...";
       try {
-        await P.store.add("feedback", { part: "recognition", text: text, answers: answers });
-        rStatus.textContent = P.demo ? "Demo: answers noted, not sent." : "Thank you. Your answers were sent.";
+        await P.sendFeedback({ part: "recognition", text: text, answers: answers });
+        rStatus.textContent = "Thank you. Your answers were sent.";
         rForm.reset();
       } catch (err) { rStatus.textContent = P.writeError(err); }
     });
@@ -129,8 +129,8 @@
       if (!t) { status.textContent = "Write a comment first."; text.focus(); return; }
       send.disabled = true; status.textContent = "Sending...";
       try {
-        await P.store.add("feedback", { part: part.value, text: t });
-        status.textContent = P.demo ? "Demo: feedback noted, not sent." : "Thank you. Your feedback was sent.";
+        await P.sendFeedback({ part: part.value, text: t });
+        status.textContent = "Thank you. Your feedback was sent.";
         text.value = "";
       } catch (err) { status.textContent = P.writeError(err); }
       send.disabled = false;

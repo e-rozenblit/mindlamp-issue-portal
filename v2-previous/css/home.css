@@ -1,8 +1,0 @@
-/* Start here page styles. Owner: core-home-about. Tokens from index.html only. Selectors prefixed #v-home. */
-#v-home .home-sent{list-style:none;padding:0;display:grid;gap:0;background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
-#v-home .home-sent>li{display:grid;gap:4px;padding:12px 14px;border-top:1px solid var(--line);min-width:0}
-#v-home .home-sent>li:first-child{border-top:0}
-#v-home .panel .bar h3{flex:1 1 12em;min-width:0}
-#v-home .panel{gap:6px}
-#v-home .panel p{margin:0}
-#v-home .panel>.bar:last-child{margin-top:6px}

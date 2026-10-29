@@ -1191,6 +1191,20 @@
      (for example the guide step) with Portal.setFeedbackContext(pageId, () => "rem.notif"). */
   const feedbackContext = {};
   function setFeedbackContext(pageId, fn) { if (pageId && typeof fn === "function") feedbackContext[pageId] = fn; }
+  /* Feedback from anywhere on the site. Signed in: a feedback record, which admins read on the Admin page.
+     Demo: there is no sign-in and no database library, so it goes to the one database function open to it
+     (submit_demo_feedback, supabase/06-demo-feedback.sql); admins read those on the Admin page too. */
+  async function sendFeedback(rec) {
+    if (!DEMO) return store.add("feedback", rec);
+    const roleSel = $("#demo-role");
+    const role = roleSel && roleSel.selectedOptions && roleSel.selectedOptions[0] ? roleSel.selectedOptions[0].textContent : "";
+    const res = await fetch(SUPABASE_URL + "/rest/v1/rpc/submit_demo_feedback", {
+      method: "POST",
+      headers: { apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ p_page: rec.part || "overall", p_text: rec.text || "", p_context: rec.context || "", p_role: role })
+    });
+    if (!res.ok) throw new Error("This didn't send. Please try again in a minute.");
+  }
   function openFeedback(part) {
     const dlg = $("#fb-dialog");
     if (!dlg) return;
@@ -1200,7 +1214,7 @@
     try { ctx = feedbackContext[page] ? String(feedbackContext[page]() || "") : ""; } catch (e) { ctx = ""; }
     dlg.dataset.context = ctx.slice(0, 120);
     $("#fb-where").textContent = "About: " + (PAGE_NAME[page] || "the portal overall") + "." +
-      (DEMO ? " In the demo, feedback is not sent anywhere." : " Only the platform team reads it.");
+      " Only the platform team reads it.";
     $("#fb-status").textContent = "";
     try { dlg.showModal(); } catch (e) { dlg.setAttribute("open", ""); }
     $("#fb-text").focus();
@@ -1219,19 +1233,36 @@
       try {
         const rec = { part: dlg.dataset.part || "overall", text: t };
         if (dlg.dataset.context) rec.context = dlg.dataset.context;
-        await store.add("feedback", rec);
+        await sendFeedback(rec);
         text.value = "";
         close();
-        toast(DEMO ? "Demo: feedback noted, not sent" : "Thank you. Your feedback was sent.");
+        toast("Thank you. Your feedback was sent.");
       } catch (err) { status.textContent = writeError(err); }
     });
   }
 
   /* ---------- demo banner and role switcher ---------- */
+  /* Counts demo visits (supabase/06-demo-feedback.sql): an anonymous random id kept in this browser, sent
+     at most once a day. No name, email or IP address is stored. Admins see the totals on the Admin page. */
+  function logDemoVisit() {
+    const today = new Date().toISOString().slice(0, 10);
+    let id = "";
+    try { if (localStorage.getItem("ip-demo-visit-day") === today) return; id = localStorage.getItem("ip-demo-visitor") || ""; } catch (e) { /* ignore */ }
+    if (!/^[A-Za-z0-9-]{8,64}$/.test(id)) {
+      id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36);
+      try { localStorage.setItem("ip-demo-visitor", id); } catch (e) { /* ignore */ }
+    }
+    fetch(SUPABASE_URL + "/rest/v1/rpc/log_demo_visit", {
+      method: "POST",
+      headers: { apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ p_visitor: id })
+    }).then(r => { if (r.ok) { try { localStorage.setItem("ip-demo-visit-day", today); } catch (e) { /* ignore */ } } }, () => {});
+  }
   function wireDemo() {
     const bar = $("#demo-banner");
     if (!bar || !DEMO) return;
     bar.hidden = false;
+    logDemoVisit();
     const sel = $("#demo-role");
     const D = window.PortalDemo;
     sel.replaceChildren(...D.roles.map(r => el("option", { value: r.uid, text: r.label })));
@@ -1254,7 +1285,7 @@
       howLink.addEventListener("click", () => { if (infoOpen) infoOpen.close(); go("about"); });
       const note = info([
         "The studies, problems and people here are made up.",
-        "Nothing you do is sent anywhere. It stays in this tab until you reset the demo or close the tab.",
+        "Nothing you do is saved, except feedback you send. It stays in this tab until you reset the demo or close the tab.",
         "Use \"View as\" to see the portal as each role.",
         el("p", {}, howLink)
       ], "About this demo");
@@ -1369,7 +1400,8 @@
     sb,
     demo: DEMO,                       /* true under ?demo=1: sample data, nothing is saved */
     PAGE_NAME: PAGE_NAME,             /* nav label per page id */
-    openFeedback, setFeedbackContext  /* feedback dialog; a page may say what is in view */
+    openFeedback, setFeedbackContext, /* feedback dialog; a page may say what is in view */
+    sendFeedback                      /* feedback from any page; works in the demo too */
   };
   /* Shorthands kept from the prototype. */
   window.Portal.el = el; window.Portal.$ = $; window.Portal.$$ = $$; window.Portal.toast = toast;

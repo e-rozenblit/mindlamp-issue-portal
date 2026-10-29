@@ -601,6 +601,35 @@
     return card;
   }
 
+  /* ---------- 6. feedback: from signed-in pages, and from the demo (supabase/06-demo-feedback.sql) ---------- */
+  async function loadDemoFeedback() {
+    if (P.demo) { st.demoFb = []; st.demoFbErr = ""; drawFeedback(); return; }
+    try { const v = await store.rpc("admin_demo_visits"); st.demoVisits = Array.isArray(v) ? v[0] : v; } catch (e) { st.demoVisits = null; }
+    try { st.demoFb = (await store.rpc("admin_demo_feedback")) || []; st.demoFbErr = ""; }
+    catch (e) { st.demoFb = []; st.demoFbErr = "Feedback sent from the demo shows here once supabase/06-demo-feedback.sql has been run."; }
+    drawFeedback();
+  }
+  function drawFeedback() {
+    const h = st.hosts && st.hosts.feedback;
+    if (!h) return;
+    const PART = Object.assign({}, P.PAGE_NAME, { overall: "The portal overall", recognition: "Credit questions" });
+    const signed = (S.feedback || []).map(f => {
+      const acct = (st.people || []).find(p => p.id === f.author);
+      return { at: f.created, page: f.part, text: f.text, who: acct ? (acct.name || acct.email) : calc.personName(f.author) };
+    });
+    const demo = (st.demoFb || []).map(f => ({ at: f.created_at, page: f.page, text: f.body, who: f.role ? "Demo, viewing as " + f.role : "Demo" }));
+    const all = signed.concat(demo).sort((x, y) => String(y.at).localeCompare(String(x.at)));
+    const v = st.demoVisits;
+    const visits = v ? el("p", { text: "Demo opened in " + plural(Number(v.today) || 0, "browser") + " today, " + (Number(v.last_7_days) || 0) +
+      " in the last 7 days, " + (Number(v.last_30_days) || 0) + " in the last 30 days" + (v.first_day ? " (counting since " + ui.fmtDate(v.first_day) + ")" : "") +
+      ". A browser counts once a day; one person on two devices counts twice." }) : null;
+    h.replaceChildren(...(visits ? [visits] : []), ...(st.demoFbErr ? [el("p", { class: "hint", text: st.demoFbErr })] : []),
+      ...(all.length ? all.map(f => el("div", { class: "card" },
+        el("p", { style: "white-space:pre-wrap;margin:0 0 6px", text: f.text || "" }),
+        el("p", { class: "hint", text: [PART[f.page] || f.page || "The portal overall", f.who, f.at ? ui.fmtDate(f.at) : ""].filter(Boolean).join(" · ") })))
+        : [ui.empty("No feedback yet.")]));
+  }
+
   /* ---------- page ---------- */
   function build(sec) {
     const studies = el("div", { class: "list" });
@@ -608,6 +637,7 @@
     const triage = el("div", { class: "list" });
     const workarounds = el("div", { class: "list" });
     const orphans = el("div", { class: "list" });
+    const feedback = el("div", { class: "list" });
     const triageCount = el("span", { class: "hint" });
     const unlinked = el("input", { type: "checkbox", checked: st.showUnlinked });
     unlinked.addEventListener("change", () => { st.showUnlinked = unlinked.checked; refresh(); });
@@ -650,10 +680,16 @@
         el("p", { class: "hint", text: "What teams wrote under \"What helped\". Other teams already see these, marked \"Not confirmed yet\". Confirm the safe ones, add a caution when one has a cost, and hide anything that isn't a workaround." })),
       workarounds,
       meeting,
+      el("div", { class: "panel" },
+        el("h3", { text: "6. Feedback" }),
+        el("p", { class: "hint", text: "From the Feedback button and How this works, signed in or from the demo. Newest first." }),
+        el("div", { class: "bar" }, el("button", { type: "button", class: "btn ghost", text: "Reload feedback", onclick: () => loadDemoFeedback() }))),
+      feedback,
       orphanPanel);
 
-    st.hosts = { studies, people, triage, workarounds, orphans, orphanPanel, triageCount, meeting };
+    st.hosts = { studies, people, triage, workarounds, orphans, orphanPanel, triageCount, meeting, feedback };
     meeting._load();
+    loadDemoFeedback();
     st.built = true;
     drawPeople();
     loadPeople();
@@ -662,6 +698,7 @@
   function refresh() {
     const h = st.hosts;
     if (!h) return;
+    drawFeedback();
     const studies = S.studies.slice().sort((a, b) => String(a.name || a.id).localeCompare(String(b.name || b.id)));
     keyed(h.studies, studies, s => s.id, s => JSON.stringify([s.name, s.notionLink, s.showName, s.test, studyCounts(s.id)]),
       studyRow, "No studies yet. Create one above.");

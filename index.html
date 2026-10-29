@@ -204,6 +204,7 @@ button.chip.basis[aria-expanded="true"]{white-space:normal;text-align:left;line-
 
 /* Sign in */
 .authbox{max-width:420px}
+.authdemo{margin:4px 0 0;padding-top:12px;border-top:1px solid var(--line)}
 
 /* Feedback dialog */
 dialog#fb-dialog{border:1px solid var(--line);border-radius:var(--r-lg);background:var(--surface);color:var(--ink);padding:18px;width:min(520px,calc(100vw - 32px))}
@@ -270,10 +271,11 @@ dialog#fb-dialog::backdrop{background:rgba(0,0,0,.4)}
   <form class="panel authbox" id="auth" hidden novalidate>
     <h2>Sign in</h2>
     <p>Where study teams and the mindLAMP platform team track app problems and what helps.</p>
-    <p class="hint">Use the email and password the mindLAMP team sent you. Forgot your password? Ask the platform team to reset it.</p>
+    <p class="hint">Use the email and password the mindLAMP team sent you. Forgot your password? Email <a href="mailto:mindlamp@bidmc.harvard.edu">mindlamp@bidmc.harvard.edu</a>.</p>
     <label class="field"><span>Email</span><input type="email" id="auth-email" autocomplete="username"></label>
     <label class="field"><span>Password</span><input type="password" id="auth-pass" autocomplete="current-password"></label>
     <div class="bar"><button class="btn" type="submit">Sign in</button><span class="hint" id="auth-status" role="status"></span></div>
+    <p class="authdemo">No account? <a href="?demo=1">Try the demo</a> with sample data.</p>
   </form>
 
   <p class="hint" id="boot">Loading...</p>
