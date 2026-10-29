@@ -226,7 +226,14 @@
     return e;
   }
   /* Toasts: shown briefly, and written into one persistent live region so screen readers announce them. */
+  /* Demo (Eden, 10-29): anything that would save or send data says so plainly, as a popup: "Demo: not sent".
+     Feedback is the one thing the demo really sends (06-demo-feedback.sql), so its thank-you stays. */
+  const DEMO_NOT_SENT = "Demo: not sent";
+  const SENT_WORDS = /\b(sent|saved|saving|created|confirmed|hidden|removed|changed|added|assigned|deleted|taken back|recorded|submitted)\b/i;
+  let lastDemoToast = 0;
   function toast(msg) {
+    if (DEMO && SENT_WORDS.test(String(msg)) && !/feedback was sent/i.test(String(msg))) msg = DEMO_NOT_SENT;
+    if (DEMO && msg === DEMO_NOT_SENT) { if (Date.now() - lastDemoToast < 1500) return; lastDemoToast = Date.now(); }
     const live = document.getElementById("live");
     if (live) { live.textContent = ""; setTimeout(() => { live.textContent = msg; }, 30); }
     const t = el("div", { class: "toast", "aria-hidden": "true", text: msg });
@@ -625,6 +632,18 @@
       emit("agg"); scheduleRender();
     }
   };
+  /* Demo: every write a button makes (a report, a vote, a session, a setup change, an admin action) pops up
+     "Demo: not sent", whatever the page itself says. Reads are untouched. */
+  if (DEMO) {
+    ["add", "create", "put", "patch", "remove", "setMembership", "removeMembership", "setPersonName"].forEach(k => {
+      const fn = store[k];
+      if (typeof fn !== "function") return;
+      store[k] = async function () { const r = await fn.apply(store, arguments); toast(DEMO_NOT_SENT); return r; };
+    });
+    const rpc = store.rpc;
+    store.rpc = async function (name) { const r = await rpc.apply(store, arguments); if (/^(portal_set|set_)/.test(String(name))) toast(DEMO_NOT_SENT); return r; };
+  }
+
   async function afterMembershipChange() {
     await store.loadMemberships();
     await store.loadPeople();
@@ -1401,7 +1420,8 @@
     demo: DEMO,                       /* true under ?demo=1: sample data, nothing is saved */
     PAGE_NAME: PAGE_NAME,             /* nav label per page id */
     openFeedback, setFeedbackContext, /* feedback dialog; a page may say what is in view */
-    sendFeedback                      /* feedback from any page; works in the demo too */
+    sendFeedback,                     /* feedback from any page; works in the demo too */
+    DEMO_NOT_SENT                     /* the demo's one message for anything not sent */
   };
   /* Shorthands kept from the prototype. */
   window.Portal.el = el; window.Portal.$ = $; window.Portal.$$ = $$; window.Portal.toast = toast;

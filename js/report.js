@@ -705,7 +705,7 @@
     f.form = form;
 
     /* After sending: what happens next */
-    f.sentTitle = el("h3", { text: "Report sent", tabindex: "-1" });
+    f.sentTitle = el("h3", { text: P.demo ? "Demo: not sent" : "Report sent", tabindex: "-1" });
     f.sentList = el("ul", { class: "rp-lines" });
     const again = el("button", { type: "button", class: "btn", text: "Report another problem" });
     again.addEventListener("click", () => { showSent(false); showPicker(true); if (picker.focusSearch) picker.focusSearch(); });
@@ -737,7 +737,7 @@
       "When the problem's status changes, you'll see it on the Home page."
     ];
     if (rec && rec.security) lines.push("Only the platform team can see this report.");
-    f.sentList.replaceChildren(...lines.map(t => el("li", { text: t })));
+    f.sentList.replaceChildren(...(P.demo ? [el("li", { text: "In the real portal, this report would go to the platform team." })] : lines.map(t => el("li", { text: t }))));
     f.sentTitle.focus();
   }
 

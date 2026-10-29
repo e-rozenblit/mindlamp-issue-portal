@@ -551,7 +551,7 @@
         await store.add("proposals", rec);
         ui.toast("Idea saved");
         form.reset(); issues.reset(); scoper.value = S.user.name || ""; sync();
-        msg.textContent = d === "explore" ? "Saved. " + rec.scoper + " fills in the full card after the meeting." : "Saved as Not now.";
+        msg.textContent = P.demo ? "Demo: not sent." : d === "explore" ? "Saved. " + rec.scoper + " fills in the full card after the meeting." : "Saved as Not now.";
         what.focus();
       } catch (err) { msg.textContent = P.writeError(err); }
     });
@@ -651,7 +651,7 @@
            issues, which every team can read (D23). Whether teams should see it is open (SPEC 10, item 24). */
         ui.toast("Proposal saved");
         if (onDone) { onDone(true); return; }
-        msg.textContent = "Proposal saved.";
+        msg.textContent = P.demo ? "Demo: not sent." : "Proposal saved.";
         form.reset(); issues.reset(); by.value = S.user.name || ""; zoneOut.textContent = "";
       } catch (err) { msg.textContent = P.writeError(err); }
     });

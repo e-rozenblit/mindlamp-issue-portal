@@ -794,7 +794,7 @@
       const m = run.fixMarks;
       const worked = order.some(x => m[x] === "fixed");
       const all = order.every(x => m[x] === "fixed" || m[x] === "not_fixed");
-      status.textContent = worked || all ? "" : "Anything you don't try now is saved for later. Record how it went from the Home page.";
+      status.textContent = worked || all ? "" : isDemo() ? "Demo: not sent." : "Anything you don't try now is saved for later. Record how it went from the Home page.";
     };
     const card = x => {
       const n = nodeOf(x);
@@ -1063,7 +1063,7 @@
       try {
         await patchFollow(collect());
         run.follow.sent[key] = true; saveRun();
-        msg.textContent = doneText; b.textContent = again;
+        msg.textContent = isDemo() ? "Demo: not sent." : doneText; b.textContent = again;
       } catch (e) { msg.textContent = P.writeError(e); }
       b.disabled = false;
     });
@@ -1100,7 +1100,7 @@
   /* The status line at the top of every ending. It only claims what happened. */
   function savedText(outcome) {
     const hasIssue = !!issueIdOf(run);
-    if (isDemo()) return "Demo: nothing was sent." + (realSavedText(outcome, hasIssue) ? " On the real site: " + realSavedText(outcome, hasIssue) : "");
+    if (isDemo()) return "Demo: not sent.";
     if (isTestStudy(run.studyId)) return "Saved to the test study. Test sessions are left out of every count.";
     return realSavedText(outcome, hasIssue);
   }
@@ -1244,7 +1244,7 @@
       save.disabled = true; msg.textContent = "Saving...";
       try {
         await patchSession(s.id, partial);
-        follow.msg = isDemo() ? "Demo: saved in this browser only." : "Saved.";
+        follow.msg = isDemo() ? "Demo: not sent." : "Saved.";
         follow.savedFinal = d.final;
         msg.textContent = follow.msg; save.textContent = "Update follow-up";
         showAgain();
